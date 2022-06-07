@@ -176,7 +176,6 @@ static void DoNetTick(void) {
 
 INL static cs_bool Bind(cs_str ip, cs_uint16 port) {
 	Server_Socket = Socket_New();
-	if(!Server_Socket) Error_PrintSys(true);
 
 	struct sockaddr_in ssa;
 	return Socket_SetAddr(&ssa, ip, port) > 0 &&
@@ -311,7 +310,7 @@ cs_bool Server_Init(void) {
 		// TODO: Написать нормальный парсер для параметра worlds-list
 		cs_bool skip_creating = false;
 		cs_byte state = 0, pos = 0;
-		cs_char buffer[65];
+		cs_char buffer[MAX_STR_LEN];
 		SVec dims = {0, 0, 0};
 		World *tmp = NULL;
 
@@ -429,9 +428,11 @@ void Server_StartLoop(void) {
 		if(start < end) {
 			Log_Warn(Sstor_Get("SV_BADTICK_BW"));
 			delta = 0;
+			continue;
 		} else if(delta > 500) {
 			Log_Warn(Sstor_Get("SV_BADTICK"), delta);
 			delta = 500;
+			continue;
 		}
 
 		Thread_Sleep(TICKS_PER_SECOND);
@@ -476,7 +477,7 @@ INL static void UnloadAllWorlds(void) {
 	}
 }
 
-static void KickAll(cs_str reason) {
+INL static void KickAll(cs_str reason) {
 	for(ClientID i = 0; i < MAX_CLIENTS; i++) {
 		Client *client = Clients_List[i];
 		if(client) Client_Kick(client, reason);

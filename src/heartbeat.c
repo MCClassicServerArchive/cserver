@@ -19,7 +19,7 @@ static AListField *headHeartbeat = NULL;
 static Mutex *gLock = NULL;
 static cs_bool inited = false;
 
-INL static void NewSecret(Heartbeat *self) {
+static void NewSecret(Heartbeat *self) {
 	RNGState secrnd;
 	Random_SeedFromTime(&secrnd);
 
@@ -53,16 +53,16 @@ INL static void TrimReserved(cs_char *name) {
 }
 
 static cs_file openHeartbeatSecret(Heartbeat *self, cs_str mode) {
-	cs_char path[MAX_PATH];
-	if(!String_FormatBuf(path, MAX_PATH, "secrets/%s.txt", self->domain)) {
+	cs_char path[MAX_PATH_LEN];
+	if(!String_FormatBuf(path, MAX_PATH_LEN, "secrets/%s.txt", self->domain)) {
 		Error_PrintSys(false);
 		return NULL;
 	}
-	
+
 	return File_Open(path, mode);
 }
 
-static void searchForSecretKey(Heartbeat *self) {
+INL static void searchForSecretKey(Heartbeat *self) {
 	Mutex_Lock(gLock);
 	self->keychanged = false;
 	cs_file sfile = openHeartbeatSecret(self, "r");
@@ -102,9 +102,9 @@ static cs_bool VanillaKeyChecker(cs_str secret, Client *client) {
 	return String_CaselessCompare2(hash_hex, key, 32);
 }
 
-INL static void MakeHeartbeatRequest(Heartbeat *self) {
-	cs_char reqstr[512], name[65], rsp[1024];
-	String_Copy(name, 65, Config_GetStrByKey(Server_Config, CFG_SERVERNAME_KEY));
+static void MakeHeartbeatRequest(Heartbeat *self) {
+	cs_char reqstr[512], name[MAX_STR_LEN], rsp[1024];
+	String_Copy(name, MAX_STR_LEN, Config_GetStrByKey(Server_Config, CFG_SERVERNAME_KEY));
 	TrimReserved(name);
 
 	cs_int32 port = (cs_int32)Config_GetInt32ByKey(Server_Config, CFG_SERVERPORT_KEY);
@@ -241,7 +241,7 @@ cs_bool Heartbeat_Run(Heartbeat *self) {
 	return true;
 }
 
-INL static void freeMemory(Heartbeat *self) {
+static void freeMemory(Heartbeat *self) {
 	if(self->started) {
 		self->started = false;
 		Waitable_Wait(self->isdone);
@@ -254,7 +254,7 @@ INL static void freeMemory(Heartbeat *self) {
 	Memory_Free(self);
 }
 
-INL static void saveHeartbeatKey(Heartbeat *self) {
+static void saveHeartbeatKey(Heartbeat *self) {
 	if(self->keychanged) {
 		cs_file sfile = openHeartbeatSecret(self, "w");
 		if(!sfile) {

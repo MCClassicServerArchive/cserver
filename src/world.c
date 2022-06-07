@@ -149,7 +149,7 @@ cs_bool World_SetTexturePack(World *world, cs_str url) {
 		world->info.texturepack[0] = '\0';
 		return url == NULL;
 	}
-	if(!String_Copy(world->info.texturepack, 65, url)) {
+	if(!String_Copy(world->info.texturepack, MAX_STR_LEN, url)) {
 		world->info.texturepack[0] = '\0';
 		return false;
 	}
@@ -180,14 +180,14 @@ cs_bool World_SetEnvColor(World *world, EColor type, Color3* color) {
 		Event_Call(EVT_ONCOLOR, world);
 		return true;
 	}
-	
+
 	return false;
 }
 
 void World_SetSeed(World *world, cs_uint32 seed) {
 	if(!ISSET(world->flags, WORLD_FLAG_MODIGNORE))
 		world->flags |= WORLD_FLAG_MODIFIED;
-	
+
 	world->info.seed = seed;
 }
 
@@ -374,9 +374,9 @@ THREAD_FUNC(WorldSaveThread) {
 	cs_byte *wdata = World_GetBlockArray(world, &wsize);
 	Compr_SetInBuffer(&world->compr, wdata, wsize);
 
-	cs_char path[MAX_PATH], tmpname[MAX_PATH], out[CHUNK_SIZE];
-	String_FormatBuf(path, MAX_PATH, "worlds" PATH_DELIM "%s.cws", world->name);
-	String_FormatBuf(tmpname, MAX_PATH, "worlds" PATH_DELIM "%s.tmp", world->name);
+	cs_char path[MAX_PATH_LEN], tmpname[MAX_PATH_LEN], out[CHUNK_SIZE];
+	String_FormatBuf(path, MAX_PATH_LEN, "worlds" PATH_DELIM "%s.cws", world->name);
+	String_FormatBuf(tmpname, MAX_PATH_LEN, "worlds" PATH_DELIM "%s.tmp", world->name);
 
 	Directory_Ensure("worlds");
 	cs_file fp = File_Open(tmpname, "wb");
@@ -481,9 +481,10 @@ cs_bool World_Save(World *world) {
 		world->error.extra = WORLD_EXTRA_NOINFO;
 		return false;
 	}
+
 	if(!World_IsModified(world))
 		return World_IsReadyToPlay(world);
-	
+
 	World_Lock(world, 0);
 	Thread_Create(WorldSaveThread, world, true);
 	return true;

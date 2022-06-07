@@ -42,7 +42,7 @@ void Client_Init(Client *client, Socket fd, cs_ulong addr) {
 	client->cpeData.model = 256;
 	client->cpeData.clickDist = 160;
 	NetBuffer_Init(&client->netbuf, fd);
-	String_Copy(client->cpeData.appName, 65, "Vanilla client");
+	String_Copy(client->cpeData.appName, MAX_STR_LEN, "Vanilla client");
 }
 
 Client *Client_NewBot(void) {
@@ -253,27 +253,17 @@ void Client_UpdateWorldInfo(Client *client, World *world, cs_bool updateAll) {
 			}
 		}
 	} else {
-		switch(Client_GetExtVer(client, EXT_MAPPROPS)) {
-			case 1:
-				CPE_WriteSetMapAppearanceV1(
-					client, world->info.texturepack,
-					(cs_byte)World_GetEnvProp(world, 0),
-					(cs_byte)World_GetEnvProp(world, 1),
-					(cs_int16)World_GetEnvProp(world, 2)
-				);
-				break;
+		CPEAppearance apps = {
+			.texture = world->info.texturepack,
+			.side = (BlockID)World_GetEnvProp(world, 0),
+			.edge = (BlockID)World_GetEnvProp(world, 1),
+			.sidelvl = (cs_int16)World_GetEnvProp(world, 2),
+			.cloudlvl = (cs_int16)World_GetEnvProp(world, 3),
+			.maxdist = (cs_int16)World_GetEnvProp(world, 4)
+		};
 
-			case 2:
-				CPE_WriteSetMapAppearanceV2(
-					client, world->info.texturepack,
-					(cs_byte)World_GetEnvProp(world, 0),
-					(cs_byte)World_GetEnvProp(world, 1),
-					(cs_int16)World_GetEnvProp(world, 2),
-					(cs_int16)World_GetEnvProp(world, 3),
-					(cs_int16)World_GetEnvProp(world, 4)
-				);
-				break;
-		}
+		cs_int32 ver = Client_GetExtVer(client, EXT_MAPPROPS);
+		if(ver > 0) CPE_WriteSetMapAppearance(client, ver, &apps);
 	}
 
 	if(updateAll || world->info.modval & MV_WEATHER)
@@ -282,7 +272,7 @@ void Client_UpdateWorldInfo(Client *client, World *world, cs_bool updateAll) {
 
 CPECuboid *Client_NewSelection(Client *client) {
 	if(Client_GetExtVer(client, EXT_CUBOID)) {
-		for(cs_byte i = 0; i < CLIENT_CUBOIDS_COUNT; i++) {
+		for(cs_byte i = 0; i < CPE_MAX_CUBOIDS; i++) {
 			CPECuboid *cub = &client->cpeData.cuboids[i];
 			if(cub->used) continue;
 			cub->used = true;
@@ -366,13 +356,14 @@ INL static cs_uint32 CopyMessagePart(cs_str msg, cs_char *part, cs_uint32 i, cs_
 		cs_char prevsym = *msg++,
 		nextsym = *msg;
 
-		if(prevsym != '\r') {
+		if(prevsym != '\r' && prevsym != '\n') {
 			if(sanitize)
 				*part++ = prevsym < ' ' || prevsym > '~' ? '?' : prevsym;
 			else
 				*part++ = prevsym;
 		}
-		if(nextsym == '\0' || nextsym == '\n') break;
+		if(nextsym == '\0') break;
+		if(nextsym == '\n') {len = (j + 2); break;}
 		if(prevsym == '&' && ISHEX(nextsym)) *color = nextsym;
 	}
 
@@ -382,16 +373,17 @@ INL static cs_uint32 CopyMessagePart(cs_str msg, cs_char *part, cs_uint32 i, cs_
 
 void Client_Chat(Client *client, EMesgType type, cs_str message) {
 	if(client && Client_IsBot(client)) return;
-	cs_uint32 msgLen = (cs_uint32)String_Length(message);
 
 	if(client && type == MESSAGE_TYPE_CHAT) {
-		cs_char color = 0, part[65] = {0};
-		cs_uint32 parts = (msgLen / 60) + 1;
-		for(cs_uint32 i = 0; i < parts; i++) {
-			cs_uint32 len = CopyMessagePart(message, part, i, &color, !client->cpeData.markedAsCPE);
+		cs_char color = 0, part[MAX_STR_LEN] = {0};
+		cs_bool next = false;
+		while(*message != '\0') {
+			cs_uint32 len = CopyMessagePart(message, part, next, &color, !client->cpeData.markedAsCPE);
 			if(len > 0) {
-				Vanilla_WriteChat(client, type, part);
+				if((!next && *part != '\0') || (next && *(part + 2) != '\0'))
+					Vanilla_WriteChat(client, type, part);
 				message += len;
+				next = true;
 			}
 		}
 
@@ -426,7 +418,7 @@ static const struct _subnet {
 	{0x0000000A, 0x000000FF},
 	{0x000010AC, 0x00000FFF},
 	{0x0000A8C0, 0x0000FFFF},
-	
+
 	{0x00000000, 0x00000000}
 };
 
@@ -494,7 +486,7 @@ cs_bool Client_SetTexturePack(Client *client, cs_str url) {
 }
 
 cs_bool Client_SetDisplayName(Client *client, cs_str name) {
-	if(String_Copy(client->playerData.displayname, 65, name))
+	if(String_Copy(client->playerData.displayname, MAX_STR_LEN, name))
 		client->cpeData.updates |= PCU_NAME;
 	return false;
 }
@@ -571,7 +563,7 @@ cs_bool Client_SetModel(Client *client, cs_int16 model) {
 }
 
 cs_bool Client_SetSkin(Client *client, cs_str skin) {
-	String_Copy(client->cpeData.skin, 65, skin);
+	String_Copy(client->cpeData.skin, MAX_STR_LEN, skin);
 	client->cpeData.updates |= PCU_ENTITY;
 	return true;
 }
@@ -724,18 +716,10 @@ cs_bool Client_AddTextColor(Client *client, Color4* color, cs_char code) {
 }
 
 INL static cs_bool SendCPEEntity(Client *client, Client *other) {
-	switch(Client_GetExtVer(client, EXT_PLAYERLIST)) {
-		case 1:
-			CPE_WriteAddEntity_v1(client, other);
-			return true;
-		
-		case 2:
-			CPE_WriteAddEntity_v2(client, other);
-			return true;
-		
-		default:
-			return false;
-	}
+	cs_int32 ver = Client_GetExtVer(client, EXT_PLAYERLIST);
+	if(!ver) return false;
+	CPE_WriteAddEntity(client, ver, other);
+	return true;
 }
 
 INL static void PushClientName(Client *client, Client *other) {
@@ -1102,10 +1086,10 @@ void Client_Kick(Client *client, cs_str reason) {
 }
 
 void Client_KickFormat(Client *client, cs_str fmtreason, ...) {
-	char kickreason[65];
+	char kickreason[MAX_STR_LEN];
 	va_list args;
 	va_start(args, fmtreason);
-	if(String_FormatBufVararg(kickreason, 65, fmtreason, &args))
+	if(String_FormatBufVararg(kickreason, MAX_STR_LEN, fmtreason, &args))
 		Client_Kick(client, kickreason);
 	else
 		Client_Kick(client, fmtreason);

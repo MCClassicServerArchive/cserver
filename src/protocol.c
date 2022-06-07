@@ -324,15 +324,19 @@ void Vanilla_WriteUserType(Client *client, cs_byte type) {
 	PacketWriter_End(client);
 }
 
-static void FinishCPEThings(Client *client);
-
 static cs_bool FinishHandshake(Client *client) {
+	cs_int32 extVer = Client_GetExtVer(client, EXT_CUSTOMMODELS);
+	cs_bool hasParts = Client_GetExtVer(client, EXT_CUSTOMPARTS) > 0;
+	for(cs_int16 i = 0; i < max(CPE_MAX_MODELS, CPE_MAX_PARTICLES); i++) {
+		CPE_SendModel(client, extVer, (cs_byte)i);
+		if(hasParts) CPE_SendParticle(client, (cs_byte)i);
+	}
+
 	onHandshakeDone evt = {
 		.client = client,
 		.world = World_Main
 	};
 
-	FinishCPEThings(client);
 	return Event_Call(EVT_ONHANDSHAKEDONE, &evt) &&
 	Client_ChangeWorld(client, evt.world);
 }
@@ -350,7 +354,6 @@ cs_bool Handler_Handshake(Client *client, cs_char *data) {
 		client->playerData.isOP = true;
 
 	if(!Proto_ReadStringNoAlloc(&data, client->playerData.name)) return false;
-
 	if(Config_GetBoolByKey(Server_Config, CFG_SANITIZE_KEY)) {
 		for(cs_char *c = client->playerData.name; *c != '\0'; c++) {
 			if((*c < '0' || *c > '9') && (*c < 'A' || *c > 'Z') && (*c < 'a' || *c > 'z') && *c != '_') {
@@ -361,7 +364,8 @@ cs_bool Handler_Handshake(Client *client, cs_char *data) {
 	}
 
 	if(!Proto_ReadStringNoAlloc(&data, client->playerData.key)) return false;
-	String_Copy(client->playerData.displayname, 65, client->playerData.name);
+	String_Copy(client->playerData.displayname, MAX_STR_LEN, client->playerData.name);
+	client->cpeData.markedAsCPE = (*data == 0x42);
 
 	for(ClientID i = 0; i < MAX_CLIENTS; i++) {
 		Client *other = Clients_List[i];
@@ -376,8 +380,8 @@ cs_bool Handler_Handshake(Client *client, cs_char *data) {
 		preHandshakeDone params = {
 			.client = client
 		};
-		String_Copy(params.name, 65, Config_GetStrByKey(Server_Config, CFG_SERVERNAME_KEY));
-		String_Copy(params.motd, 65, Config_GetStrByKey(Server_Config, CFG_SERVERMOTD_KEY));
+		String_Copy(params.name, MAX_STR_LEN, Config_GetStrByKey(Server_Config, CFG_SERVERNAME_KEY));
+		String_Copy(params.motd, MAX_STR_LEN, Config_GetStrByKey(Server_Config, CFG_SERVERMOTD_KEY));
 		Event_Call(EVT_PREHANDSHAKEDONE, &params);
 		Client_SetServerIdent(client, params.name, params.motd);
 	} else {
@@ -385,7 +389,7 @@ cs_bool Handler_Handshake(Client *client, cs_char *data) {
 		return true;
 	}
 
-	if((client->cpeData.markedAsCPE = (*data == 0x42)) == true) {
+	if(client->cpeData.markedAsCPE) {
 		CPE_WriteInfo(client);
 		CPESvExt *ptr = headExtension;
 		while(ptr) {
@@ -435,7 +439,7 @@ cs_bool Handler_SetBlock(Client *client, cs_char *data) {
 			else
 				Vanilla_WriteSetBlock(client, &params.pos, World_GetBlock(world, &params.pos));
 			break;
-		
+
 		default:
 			return false;
 	}
@@ -496,6 +500,31 @@ cs_bool Handler_PosAndOrient(Client *client, cs_char *data) {
 	return true;
 }
 
+INL static cs_bool isUrl(cs_char *mesg, cs_byte ls, cs_byte en) {
+	if((en - ls) < 7) return false;
+
+	while((en - ls) > 0 && mesg[ls] == '&') { ls += 2; en -= 2; }
+
+	if(mesg[ls] != 'h' || mesg[ls + 1] != 't' || mesg[ls + 2] != 't' || mesg[ls + 3] != 'p')
+		return false;
+
+	ls += 4; en -= 4;
+	if(mesg[ls] == 's') { ls++; en--; }
+
+	return (en - ls) >= 3 && mesg[ls] == ':' && mesg[ls + 1] == '/' && mesg[ls + 2] == '/';
+}
+
+INL static void convertColors(cs_char *message, cs_byte len) {
+	cs_byte last_space = 0;
+	for(cs_byte i = 0; i < len; i++) {
+		if(message[i] == ' ') last_space = i;
+		if(message[i] == '%' && message[i + 1] != '\0') {
+			if(!isUrl(message, last_space, i))
+				message[i] = '&';
+		}
+	}
+}
+
 cs_bool Handler_Message(Client *client, cs_char *data) {
 	ValidateClientState(client, CLIENT_STATE_INGAME, true);
 
@@ -506,11 +535,7 @@ cs_bool Handler_Message(Client *client, cs_char *data) {
 	cs_byte partial = *data++,
 	len = Proto_ReadStringNoAlloc(&data, params.message);
 	if(len == 0) return false;
-
-	for(cs_byte i = 0; i < len; i++) {
-		if(params.message[i] == '%' && ISHEX(params.message[i + 1]))
-			params.message[i] = '&';
-	}
+	convertColors(params.message, len);
 
 	if(Client_GetExtVer(client, EXT_LONGMSG)) {
 		if(String_Append(client->cpeData.message, CPE_MAX_EXTMESG_LEN, params.message) && partial == 1) return true;
@@ -619,31 +644,22 @@ void CPE_WriteAddName(Client *client, Client *other) {
 	PacketWriter_End(client);
 }
 
-void CPE_WriteAddEntity_v1(Client *client, Client *other) {
-	PacketWriter_Start(client, 130);
+void CPE_WriteAddEntity(Client *client, cs_int32 ver, Client *other) {
+	PacketWriter_Start(client, ver > 1 ? 144: 130);
 
-	*data++ = PACKET_EXTENTITYADDv1;
+	*data++ = ver > 1 ? PACKET_EXTENTITYADDv2 : PACKET_EXTENTITYADDv1;
 	*data++ = client == other ? CLIENT_SELF : other->id;
 	Proto_WriteString(&data, Client_GetDisplayName(other));
 	Proto_WriteString(&data, Client_GetSkin(other));
-
-	PacketWriter_End(client);
-}
-
-void CPE_WriteAddEntity_v2(Client *client, Client *other) {
-	PacketWriter_Start(client, 144);
-
-	*data++ = PACKET_EXTENTITYADDv2;
-	*data++ = client == other ? CLIENT_SELF : other->id;
-	Proto_WriteString(&data, Client_GetDisplayName(other));
-	Proto_WriteString(&data, Client_GetSkin(other));
-	WriteExtEntityPos(
-		&data,
-		&other->playerData.position,
-		&other->playerData.angle,
-		Client_GetExtVer(client, EXT_ENTPOS) > 0,
-		client == other
-	);
+	if(ver > 1) {
+		WriteExtEntityPos(
+			&data,
+			&other->playerData.position,
+			&other->playerData.angle,
+			Client_GetExtVer(client, EXT_ENTPOS) > 0,
+			client == other
+		);
+	}
 
 	PacketWriter_End(client);
 }
@@ -715,30 +731,18 @@ void CPE_WriteSetModel(Client *client, Client *other) {
 	PacketWriter_End(client);
 }
 
-void CPE_WriteSetMapAppearanceV1(Client *client, cs_str tex, cs_byte side, cs_byte edge, cs_int16 sidelvl) {
-	PacketWriter_Start(client, 69);
+void CPE_WriteSetMapAppearance(Client *client, cs_int32 ver, CPEAppearance *apps) {
+	PacketWriter_Start(client, ver > 1 ? 73 : 69);
 
 	*data++ = PACKET_SETMAPAPPEARANCE;
-	Proto_WriteString(&data, tex);
-	*data++ = side;
-	*data++ = edge;
-	*(cs_uint16 *)data = htons(sidelvl);
-	data += 2;
-
-	PacketWriter_End(client);
-}
-
-void CPE_WriteSetMapAppearanceV2(Client *client, cs_str tex, cs_byte side, cs_byte edge, cs_int16 sidelvl, cs_int16 cllvl, cs_int16 maxview) {
-	PacketWriter_Start(client, 73);
-
-	*data++ = PACKET_SETMAPAPPEARANCE;
-	Proto_WriteString(&data, tex);
-	*data++ = side;
-	*data++ = edge;
-	*(cs_uint16 *)data = htons(sidelvl); data += 2;
-	*(cs_uint16 *)data = htons(cllvl); data += 2;
-	*(cs_uint16 *)data = htons(maxview); data += 2;
-
+	Proto_WriteString(&data, apps->texture);
+	*data++ = apps->side;
+	*data++ = apps->edge;
+	*(cs_uint16 *)data = htons(apps->sidelvl); data += 2;
+	if(ver > 1) {
+		*(cs_uint16 *)data = htons(apps->cloudlvl); data += 2;
+		*(cs_uint16 *)data = htons(apps->maxdist); data += 2;
+	}
 	PacketWriter_End(client);
 }
 
@@ -1052,7 +1056,7 @@ cs_bool CPEHandler_ExtInfo(Client *client, cs_char *data) {
 	ValidateClientState(client, CLIENT_STATE_MOTD, false);
 
 	if(!Proto_ReadStringNoAlloc(&data, client->cpeData.appName)) {
-		String_Copy(client->cpeData.appName, 65, "(unknown)");
+		String_Copy(client->cpeData.appName, MAX_STR_LEN, "(unknown)");
 		return true;
 	}
 	client->cpeData.extensions.count = ntohs(*(cs_uint16 *)data);
@@ -1069,7 +1073,7 @@ cs_bool CPEHandler_ExtEntry(Client *client, cs_char *data) {
 	ValidateClientState(client, CLIENT_STATE_MOTD, false);
 	struct _CPEClExts *exts = &client->cpeData.extensions;
 	if(exts->current == exts->count) return false;
-	cs_char tempname[65];
+	cs_char tempname[MAX_STR_LEN];
 	if(!Proto_ReadStringNoAlloc(&data, tempname))
 		return false;
 
@@ -1140,6 +1144,9 @@ cs_bool CPEHandler_TwoWayPing(Client *client, cs_char *data) {
 				client->cpeData.pingAvgTime = (client->cpeData._pingAvgSize * client->cpeData.pingAvgTime +
 				(cs_float)client->cpeData.pingTime) / (client->cpeData._pingAvgSize + 1);
 				client->cpeData._pingAvgSize += 1;
+				if(client->cpeData._pingAvgSize > 30)
+					client->cpeData._pingAvgSize = 1;
+				Event_Call(EVT_ONPING, client);
 			}
 
 			return true;
@@ -1161,15 +1168,6 @@ cs_bool CPEHandler_PluginMessage(Client *client, cs_char *data) {
 	return Event_Call(EVT_ONPLUGINMESSAGE, &pmesg);
 }
 
-static void FinishCPEThings(Client *client) {
-	cs_int32 extVer = Client_GetExtVer(client, EXT_CUSTOMMODELS);
-	cs_bool hasParts = Client_GetExtVer(client, EXT_CUSTOMPARTS) > 0;
-	for(cs_int16 i = 0; i < max(CPE_MODELS_COUNT, CPE_PARTICLES_COUNT); i++) {
-		CPE_SendModel(client, extVer, (cs_byte)i);
-		if(hasParts) CPE_SendParticle(client, (cs_byte)i);
-	}
-}
-
 static Packet *packetsList[256] = {NULL};
 
 cs_bool Packet_Register(EPacketID id, cs_uint16 size, packetHandler handler) {
@@ -1180,7 +1178,7 @@ cs_bool Packet_Register(EPacketID id, cs_uint16 size, packetHandler handler) {
 	tmp->size = size;
 	tmp->handler = (void *)handler;
 	packetsList[id] = tmp;
-	
+
 	return true;
 }
 
