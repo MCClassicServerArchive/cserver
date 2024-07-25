@@ -114,14 +114,17 @@ void Proto_WriteByteColor4(cs_char **dataptr, const Color4* color) {
 	*dataptr = data;
 }
 
-void Proto_WriteFloat(cs_char **dataptr, cs_float num) {
+void Proto_WriteNFloat(cs_char **dataptr, cs_uint32 n, cs_float *arr) {
 	union {
 		cs_float num;
 		cs_uint32 numi;
 	} fi;
-	fi.num = num;
-	*(cs_uint32 *)*dataptr = htonl(fi.numi);
-	*dataptr += sizeof(fi);
+
+	for(cs_uint32 i = 0; i < n; i++) {
+		fi.num = arr[i];
+		*(cs_uint32 *)*dataptr = htonl(fi.numi);
+		*dataptr += sizeof(fi);
+	}
 }
 
 NOINL static void WriteExtEntityPos(cs_char **dataptr, Vec *vec, Ang *ang, cs_bool extended, cs_bool sub) {
@@ -433,9 +436,8 @@ cs_bool Handler_SetBlock(Client *client, cs_char *data) {
 				Vanilla_WriteSetBlock(client, &params.pos, World_GetBlock(world, &params.pos));
 			break;
 		case SETBLOCK_MODE_DESTROY:
-			params.id = BLOCK_AIR;
-			if(Event_Call(EVT_ONBLOCKPLACE, &params) && World_SetBlock(world, &params.pos, params.id))
-				UpdateBlock(world, &params.pos, params.id);
+			if(Event_Call(EVT_ONBLOCKPLACE, &params) && World_SetBlock(world, &params.pos, BLOCK_AIR))
+				UpdateBlock(world, &params.pos, BLOCK_AIR);
 			else
 				Vanilla_WriteSetBlock(client, &params.pos, World_GetBlock(world, &params.pos));
 			break;
@@ -535,7 +537,6 @@ cs_bool Handler_Message(Client *client, cs_char *data) {
 	cs_byte partial = *data++,
 	len = Proto_ReadStringNoAlloc(&data, params.message);
 	if(len == 0) return false;
-	convertColors(params.message, len);
 
 	if(Client_GetExtVer(client, EXT_LONGMSG)) {
 		if(String_Append(client->cpeData.message, CPE_MAX_EXTMESG_LEN, params.message) && partial == 1) return true;
@@ -547,9 +548,10 @@ cs_bool Handler_Message(Client *client, cs_char *data) {
 			Vanilla_WriteChat(client, MESSAGE_TYPE_CHAT, Sstor_Get("CMD_UNK"));
 	} else {
 		if(Event_Call(EVT_ONMESSAGE, &params)) {
-			cs_char formatted[320] = {0};
+			cs_char formatted[264] = {0};
 
-			if(String_FormatBuf(formatted, 320, "<%s&f>: %s", Client_GetDisplayName(client), params.message))
+			convertColors(params.message, len);
+			if(String_FormatBuf(formatted, 264, "<%s&f>: %s", Client_GetDisplayName(client), params.message))
 				Client_Chat(CLIENT_BROADCAST, params.type, formatted);
 		}
 	}
@@ -966,20 +968,13 @@ void CPE_WriteDefineModel(Client *client, cs_byte id, CPEModel *model) {
 	Proto_WriteString(&data, model->name);
 	*data++ = model->flags;
 
-	Proto_WriteFloat(&data, model->nameY);
-	Proto_WriteFloat(&data, model->eyeY);
+	Proto_WriteNFloat(&data, 2, &model->nameY); // NameY, EyeY
 
-	Proto_WriteFloat(&data, model->collideBox.x);
-	Proto_WriteFloat(&data, model->collideBox.y);
-	Proto_WriteFloat(&data, model->collideBox.z);
+	Proto_WriteNFloat(&data, 3, &model->collideBox.x); // collideBox (x, y, z)
 
-	Proto_WriteFloat(&data, model->clickMin.x);
-	Proto_WriteFloat(&data, model->clickMin.y);
-	Proto_WriteFloat(&data, model->clickMin.z);
+	Proto_WriteNFloat(&data, 3, &model->clickMin.x); // clickMin (x, y, z)
 
-	Proto_WriteFloat(&data, model->clickMax.x);
-	Proto_WriteFloat(&data, model->clickMax.y);
-	Proto_WriteFloat(&data, model->clickMax.z);
+	Proto_WriteNFloat(&data, 3, &model->clickMax.x); // clickMax (x, y, z)
 
 	*(cs_uint16 *)data = htons(model->uScale); data += 2;
 	*(cs_uint16 *)data = htons(model->vScale); data += 2;
@@ -994,13 +989,8 @@ void CPE_WriteDefineModelPart(Client *client, cs_int32 ver, cs_byte id, CPEModel
 	*data++ = PACKET_DEFINEMODELPART;
 	*data++ = id;
 
-	Proto_WriteFloat(&data, part->minCoords.x);
-	Proto_WriteFloat(&data, part->minCoords.y);
-	Proto_WriteFloat(&data, part->minCoords.z);
-
-	Proto_WriteFloat(&data, part->maxCoords.x);
-	Proto_WriteFloat(&data, part->maxCoords.y);
-	Proto_WriteFloat(&data, part->maxCoords.z);
+	Proto_WriteNFloat(&data, 3, &part->minCoords.x); // minCoords (x, y, z)
+	Proto_WriteNFloat(&data, 3, &part->maxCoords.x); // maxCoords (x, y, z)
 
 	for(cs_int32 i = 0; i < 6; i++) {
 		*(cs_uint16 *)data = htons(part->UVs[i].U1); data += 2;
@@ -1009,22 +999,13 @@ void CPE_WriteDefineModelPart(Client *client, cs_int32 ver, cs_byte id, CPEModel
 		*(cs_uint16 *)data = htons(part->UVs[i].V2); data += 2;
 	}
 
-	Proto_WriteFloat(&data, part->rotOrigin.x);
-	Proto_WriteFloat(&data, part->rotOrigin.y);
-	Proto_WriteFloat(&data, part->rotOrigin.z);
-
-	Proto_WriteFloat(&data, part->rotAngles.x);
-	Proto_WriteFloat(&data, part->rotAngles.y);
-	Proto_WriteFloat(&data, part->rotAngles.z);
+	Proto_WriteNFloat(&data, 3, &part->rotOrigin.x); // rotOrigin (x, y, z)
+	Proto_WriteNFloat(&data, 3, &part->rotAngles.x); // rotAngles (x, y, z)
 
 	// Отправка анимаций происходит только если версия CustomModels равна 2
 	for(cs_int32 i = 0; i < 4 && ver == 2; i++) {
 		*data++ = part->anims[i].flags;
-
-		Proto_WriteFloat(&data, part->anims[i].a);
-		Proto_WriteFloat(&data, part->anims[i].b);
-		Proto_WriteFloat(&data, part->anims[i].c);
-		Proto_WriteFloat(&data, part->anims[i].d);
+		Proto_WriteNFloat(&data, 4, &part->anims[i].a); // anim (a, b, c, d)
 	}
 
 	*data++ = part->flags;
@@ -1047,6 +1028,31 @@ void CPE_WritePluginMessage(Client *client, cs_byte channel, cs_str message) {
 	*data++ = PACKET_PLUGINMESSAGE;
 	*data++ = channel;
 	Proto_WriteString(&data, message);
+
+	PacketWriter_End(client);
+}
+
+void CPE_WriteExtEntityTeleport(Client *client, cs_byte behavior, Vec *pos, Ang *ang) {
+	PacketWriter_Start(client, 17);
+
+	*data++ = PACKET_EXTENTITYTP;
+	*data++ = CLIENT_SELF;
+	*data++ = behavior;
+	if(Client_GetExtVer(client, EXT_ENTPOS))
+		Proto_WriteFlVec(&data, pos);
+	else
+		Proto_WriteFlSVec(&data, pos);
+	Proto_WriteAng(&data, ang);
+
+	PacketWriter_End(client);
+}
+
+void CPE_WriteLightingMode(Client *client, cs_byte mode, cs_bool locked) {
+	PacketWriter_Start(client, 3);
+
+	*data++ = PACKET_LIGHTINGMODE;
+	*data++ = mode;
+	*data++ = locked;
 
 	PacketWriter_End(client);
 }
@@ -1220,11 +1226,11 @@ static const struct extReg {
 	{"ChangeModel", 1},
 	{"EnvMapAppearance", 2},
 	{"EnvWeatherType", 1},
-	{"HackControl", 1},
 	{"MessageTypes", 1},
+	{"HackControl", 1},
 	{"PlayerClick", 1},
-	{"LongerMessages", 1},
 	{"FullCP437", 1},
+	{"LongerMessages", 1},
 	{"BlockDefinitions", 1},
 	{"BlockDefinitionsExt", 2},
 	{"BulkBlockUpdate", 1},
@@ -1234,15 +1240,19 @@ static const struct extReg {
 	{"ExtEntityPositions", 1},
 	{"TwoWayPing", 1},
 	{"InventoryOrder", 1},
-	// {"ExtendedBlocks", 1},
 	{"FastMap", 1},
-	// {"ExtendedTextures", 1},
 	{"SetHotbar", 1},
 	{"SetSpawnpoint", 1},
 	{"VelocityControl", 1},
 	{"CustomParticles", 1},
 	{"CustomModels", 2},
 	{"PluginMessages", 1},
+	{"ExtEntityTeleport", 1},
+	{"LightingMode", 1},
+
+	// Не думаю, что они когда-нибудь появятся
+	// {"ExtendedBlocks", 1},
+	// {"ExtendedTextures", 1},
 
 	{NULL, 0}
 };
@@ -1267,6 +1277,7 @@ void Packet_RegisterDefault(void) {
 	(void)Packet_Register(PACKET_TWOWAYPING,      3, CPEHandler_TwoWayPing);
 	(void)Packet_Register(PACKET_PLAYERCLICKED,   14, CPEHandler_PlayerClick);
 	(void)Packet_Register(PACKET_PLUGINMESSAGE,   65, CPEHandler_PluginMessage);
+
 	(void)Packet_SetCPEHandler(PACKET_ENTITYTELEPORT, EXT_ENTPOS, 1, 15, NULL);
 }
 

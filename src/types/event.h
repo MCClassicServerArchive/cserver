@@ -28,17 +28,17 @@ typedef enum _EventType {
 	EVT_ONCLICK,
 	EVT_ONMOVE,
 	EVT_ONROTATE,
-	EVT_ONWEATHER,
-	EVT_ONCOLOR,
+	EVT_ONWORLDSTATUSCHANGE,
 	EVT_ONWORLDADDED,
-	EVT_ONWORLDLOADED,
-	EVT_ONWORLDUNLOADED,
 	EVT_ONWORLDREMOVED,
+	EVT_ONPLUGINLOAD,
+	EVT_ONPLUGINUNLOAD,
 	EVT_ONPLUGINMESSAGE,
 	EVT_ONLOG,
 
 	EVT_PRECOMMAND,
 	EVT_PREHANDSHAKEDONE,
+	EVT_PREWORLDENVUPDATE,
 
 	EVENTS_TCOUNT
 } EventType;
@@ -111,4 +111,11 @@ typedef struct _preHandshakeDone {
 	Client *const client;
 	cs_char name[MAX_STR_LEN], motd[MAX_STR_LEN];
 } preHandshakeDone;
+
+typedef struct _preWorldEnvUpdate {
+	World *const world;
+	const cs_byte values;
+	const cs_uint16 props;
+	const cs_byte colors;
+} preWorldEnvUpdate;
 #endif

@@ -24,9 +24,7 @@ typedef enum _ECExtra {
 
 typedef enum _ECTypes {
 	CONFIG_TYPE_BOOL,
-	CONFIG_TYPE_INT32,
-	CONFIG_TYPE_INT16,
-	CONFIG_TYPE_INT8,
+	CONFIG_TYPE_INT,
 	CONFIG_TYPE_STR,
 
 	CONFIG_MAX_TYPE
@@ -34,13 +32,11 @@ typedef enum _ECTypes {
 
 typedef union _CUValue {
 	cs_bool vbool;
-	cs_int8 vint8;
-	cs_int16 vint16;
 	cs_int32 vint;
-	cs_str vchar;
+	cs_str vstr;
 } CUValue;
 
-#define CFG_MAX_LEN     128 // Максимальная длина строки в cfg файле
+#define CFG_MAX_LEN     255 // Максимальная длина строки в cfg файле
 #define CFG_FREADED     BIT(0) // Была ли осуществленна попытка чтения значения из cfg файла
 #define CFG_FCHANGED    BIT(1) // Отличается ли текущее значение записи от заданного стандартного
 #define CFG_FHAVELIMITS BIT(2) // Применимо только для integer типов

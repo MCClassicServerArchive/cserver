@@ -84,10 +84,10 @@ static cs_bool VanillaKeyChecker(cs_str secret, Client *client) {
 	cs_byte hash[16];
 	cs_char hash_hex[33];
 
-	if(MD5_Init(&ctx)) {
-		MD5_Update(&ctx, secret, (cs_ulong)String_Length(secret));
-		MD5_Update(&ctx, name, (cs_ulong)String_Length(name));
-		MD5_Final(hash, &ctx);
+	if(MD5_Start(&ctx)) {
+		MD5_PushData(&ctx, secret, (cs_ulong)String_Length(secret));
+		MD5_PushData(&ctx, name, (cs_ulong)String_Length(name));
+		MD5_End(hash, &ctx);
 	} else {
 		Log_Error(Sstor_Get("HBEAT_KEYCHECK_ERR"));
 		return false;
@@ -107,8 +107,8 @@ static void MakeHeartbeatRequest(Heartbeat *self) {
 	String_Copy(name, MAX_STR_LEN, Config_GetStrByKey(Server_Config, CFG_SERVERNAME_KEY));
 	TrimReserved(name);
 
-	cs_int32 port = (cs_int32)Config_GetInt32ByKey(Server_Config, CFG_SERVERPORT_KEY);
-	cs_int16 max = (cs_int16)Config_GetInt16ByKey(Server_Config, CFG_MAXPLAYERS_KEY);
+	cs_int32 port = (cs_int32)Config_GetIntByKey(Server_Config, CFG_SERVERPORT_KEY);
+	cs_int16 max = (cs_int16)Config_GetIntByKey(Server_Config, CFG_MAXPLAYERS_KEY);
 	cs_byte count = Clients_GetCount(CLIENT_STATE_INGAME);
 
 	if(String_FormatBuf(reqstr, 512, REQUEST,

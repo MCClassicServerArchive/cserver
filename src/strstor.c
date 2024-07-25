@@ -105,12 +105,13 @@ cs_bool Sstor_Defaults(void) {
 	Sstor_Set("HBEAT_ERR_ER", "Empty server response");
 	Sstor_Set("HBEAT_ERR_HF", "HTTP request failed");
 	Sstor_Set("HBEAT_ERR_CF", "Failed to open HTTP connection");
-	Sstor_Set("HBEAT_KEYCHECK_ERR", "VanillaKeyChecker: MD5_Init() returned false, can't check user key validity");
+	Sstor_Set("HBEAT_KEYCHECK_ERR", "VanillaKeyChecker: MD5_Start() returned false, can't check user key validity");
 	Sstor_Set("HBEAT_SECRET_COMM1", "#Remove this file if you want to generate new secret key\n");
 	Sstor_Set("HBEAT_SECRET_COMM2", "#This key used by the heartbeat as server's \"salt\" for user authentication check\n");
 
 	Sstor_Set("PLUG_DEPR_API", "Please upgrade your server software. Plugin \"%s\" compiled for PluginAPI v%03d, but server uses v%d.");
-	Sstor_Set("PLUG_DEPR", "Plugin \"%s\" is deprecated. Server uses PluginAPI v%03d but plugin compiled for v%03d.");
+	Sstor_Set("PLUG_DEPR", "Plugin \"%s\" is deprecated. The server uses PluginAPI v%03d, but this plugin is compiled for v%03d.");
+	Sstor_Set("PLUG_DEPR2", "Plugin \"%s\" is deprecated. The server uses PluginAPI v%03d, but this plugin is compiled for v%03d. You may find its updated version here: %s.");
 	Sstor_Set("PLUG_ERROR", "Failed to load plugin %s: Plugin_Load returned false");
 	Sstor_Set("PLUG_ITFS", "Failed to load plugin %s: Interface collision detected");
 

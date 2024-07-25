@@ -4,8 +4,8 @@
 #include "types/platform.h"
 
 #define Memory_Zero(p, c) Memory_Fill(p, c, 0)
-#define THREAD_FUNC(N) \
-static TRET N(TARG param)
+#define THREAD_FUNC(N) static TRET N(TARG param)
+#define THREAD_PUBFUNC(N) TRET N(TARG param)
 
 #ifndef CORE_BUILD_PLUGIN
 	cs_bool Memory_Init(void);
@@ -21,6 +21,7 @@ API void *Memory_Alloc(cs_size num, cs_size size);
 API void *Memory_Realloc(void *oldptr, cs_size new);
 API void  Memory_Copy(void *dst, const void *src, cs_size count);
 API void  Memory_Fill(void *dst, cs_size count, cs_byte val);
+API cs_bool Memory_Compare(const cs_byte *src1, const cs_byte *src2, cs_size len);
 API void  Memory_Free(void *ptr);
 
 API cs_bool Iter_Init(DirIter *iter, cs_str path, cs_str ext);
@@ -32,13 +33,14 @@ API cs_bool File_Rename(cs_str path, cs_str newpath);
 API cs_file File_Open(cs_str path, cs_str mode);
 API cs_file File_ProcOpen(cs_str cmd, cs_str mode);
 API cs_size File_Read(void *ptr, cs_size size, cs_size count, cs_file fp);
-API cs_int32 File_ReadLine(cs_file fp, cs_char *line, cs_int32 len);
+API cs_int32 File_ReadLine(cs_file fp, cs_char *line, cs_size len);
 API cs_size File_Write(const void *ptr, cs_size size, cs_size count, cs_file fp);
 API cs_int32 File_GetChar(cs_file fp);
 API cs_int32 File_Error(cs_file fp);
+API cs_bool File_IsEnd(cs_file fp);
 API cs_int32 File_WriteFormat(cs_file fp, cs_str fmt, ...);
 API cs_bool File_Flush(cs_file fp);
-API cs_int32 File_Seek(cs_file fp, long offset, cs_int32 origin);
+API cs_long File_Seek(cs_file fp, cs_long offset, cs_int32 origin);
 API cs_bool File_Close(cs_file fp);
 API cs_bool File_ProcClose(cs_file fp);
 
@@ -58,6 +60,7 @@ cs_bool Socket_Init(void);
 void Socket_Uninit(void);
 API Socket Socket_New(void);
 API cs_bool Socket_IsFatal(void);
+API cs_bool Socket_IsLocal(cs_ulong addr);
 API cs_error Socket_GetError(void);
 API cs_ulong Socket_AvailData(Socket n);
 API cs_bool Socket_SetNonBlocking(Socket n, cs_bool state);

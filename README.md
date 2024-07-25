@@ -1,6 +1,18 @@
+<p align='center'>
+    <a href='https://github.com/igor725/cserver/actions/workflows/build.yml'>
+        <img src='https://github.com/igor725/cserver/actions/workflows/build.yml/badge.svg' />
+    </a>
+	<a href='https://github.com/igor725/cserver/releases'>
+		<img src='https://img.shields.io/github/downloads/igor725/cserver/total.svg' />
+	</a>
+    <a href='https://github.com/igor725/cserver/pulse'>
+        <img src='https://img.shields.io/github/commit-activity/m/igor725/cserver' />
+    </a>
+</p>
+
 # cserver
 Another Minecraft Classic server in C.
-The server is still under development (see [Projects](https://github.com/igor725/cserver/projects) tab)!
+The server is still under development (see [Projects](https://github.com/igor725/cserver/projects?type=classic) tab)!
 
 The goal of this project is to create a stable, customizable and future-rich multiplatform Minecraft Classic server with a minimum dependencies.
 
@@ -10,15 +22,14 @@ The goal of this project is to create a stable, customizable and future-rich mul
 * Plugins support
 * Web client support ([More info](https://www.classicube.net/api/docs/server#footer))
 * Lua scripting (Implemented in the [Lua plugin](https://github.com/igor725/cs-lua))
-* RCON server (Implemented in the [Base plugin](https://github.com/igor725/cs-base))
-* Own world generator (Written by [scaled](https://github.com/scaledteam) for [LuaClassic](https://github.com/igor725/LuaClassic), later ported to C by me)
+* In browser control panel (Implemented in the [WebAdmin plugin](https://github.com/igor725/cs-web))
+* Own world generator (Written by [scaled](https://github.com/scaledteam) for [LuaClassic](https://github.com/igor725/LuaClassic), later ported to cserver by me)
 * Heartbeat API (ClassiCube heartbeat implemented in the [Base plugin](https://github.com/igor725/cs-base))
 * Easy configurable
 
 ## Download
-If you don't want to mess with compilers, you can always download latest prebuilt binaries [here](https://github.com/igor725/cserver/actions/workflows/build.yml).
-
-Single command builder for Linux: `curl -sL https://igvx.ru/singlecommand | bash` (server + base + lua)
+If you don't want to mess with compilers, you can always download the release build for your OS [here](https://github.com/igor725/cserver/releases).
+You can also get the latest unstable build [here](https://github.com/igor725/cserver/actions/workflows/build.yml).
 
 ## Dependencies
 
@@ -63,6 +74,8 @@ SET CFLAGS=!CFLAGS! /DCORE_MANUAL_BACKENDS ^
 
 ### On Linux/macOS
 ``./build [args ...]``
+
+Single command builder for Linux: `curl -sL https://igvx.ru/singlecommand | bash` (server + base + lua)
 
 NOTE: This script uses gcc, but you can change it to another compiler by setting CC environment variable (``CC=clang ./build [args ...]``).
 
@@ -109,7 +122,6 @@ Notice that these arguments must be passed **after** the `pb` argument and plugi
 ## Notes
 * Use this software carefully! The server **may** have many security holes.
 * At this point, it is strongly recommended to recompile **all plugins** every time you update the server, otherwise your server may crash due to API incompatibility.
-* My main OS is Windows 10, this means the Linux thing are not well tested.
 * By default the server doesn't have any useful chat commands, build the [cs-base](https://github.com/igor725/cs-base) plugin for an expanded command set.
 * Here is the [example plugin](https://github.com/igor725/cs-test) for this server software.
 * Your directory should have the following structure in order to compile plugins:

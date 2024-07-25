@@ -5,6 +5,9 @@
 #include "plugin.h"
 #include "strstor.h"
 #include "list.h"
+#include "config.h"
+#include "server.h"
+#include "event.h"
 
 Plugin *Plugins_List[MAX_PLUGINS] = {NULL};
 
@@ -16,7 +19,7 @@ INL static void AddInterface(Plugin *requester, PluginInterface *iface) {
 }
 
 INL static cs_bool CheckHoldIfaces(Plugin *plugin) {
-	for(cs_int8 i = 0; i < MAX_PLUGINS; i++) {
+	for(cs_uint32 i = 0; i < MAX_PLUGINS; i++) {
 		AListField *hold;
 		Plugin *tplugin = Plugins_List[i];
 		if(tplugin == plugin || !tplugin) continue;
@@ -38,31 +41,39 @@ INL static cs_bool CheckHoldIfaces(Plugin *plugin) {
 	return true;
 }
 
-cs_bool Plugin_LoadDll(cs_str name) {
+cs_bool Plugin_LoadDll(cs_str name, cs_bool ignoredep) {
 	if(!String_IsSafe(name)) return false;
 
 	cs_char path[256], error[512];
 	void *lib;
-	pluginInitFunc initSym;
-	cs_int32 *apiVerSym;
-	cs_int32 *plugVerSym;
+	pluginInitFunc initSym = NULL;
+	pluginInitExFunc initSymEx = NULL;
+	pluginUrlFunc urlSym = NULL;
+	cs_int32 *apiVerSym = NULL;
+	cs_int32 *plugVerSym = NULL;
 	String_FormatBuf(path, 256, "plugins" PATH_DELIM "%s", name);
 
 	if(DLib_Load(path, &lib)) {
 		if(!(DLib_GetSym(lib, "Plugin_ApiVer", (void *)&apiVerSym) &&
-		DLib_GetSym(lib, "Plugin_Load", (void *)&initSym))) {
+		(DLib_GetSym(lib, "Plugin_Load", (void *)&initSym)
+		|| DLib_GetSym(lib, "Plugin_LoadEx", (void *)&initSymEx)))) {
 			Log_Error("%s: %s", path, DLib_GetError(error, 512));
 			DLib_Unload(lib);
 			return false;
 		}
 
-		if(*apiVerSym != PLUGIN_API_NUM) {
-			if(*apiVerSym < PLUGIN_API_NUM)
-				Log_Error(Sstor_Get("PLUG_DEPR"), name, PLUGIN_API_NUM, *apiVerSym);
-			else
-				Log_Error(Sstor_Get("PLUG_DEPR_API"), name, *apiVerSym, PLUGIN_API_NUM);
+		if(!DLib_GetSym(lib, "Plugin_URL", (void *)&urlSym))
+			urlSym = NULL;
 
-			DLib_Unload(lib);
+		if(*apiVerSym != PLUGIN_API_NUM) {
+			cs_byte flag = ignoredep ? LOG_WARN : LOG_ERROR;
+			if(*apiVerSym < PLUGIN_API_NUM)
+				Log_Gen(flag, Sstor_Get(urlSym ? "PLUG_DEPR2" : "PLUG_DEPR"),
+				name, PLUGIN_API_NUM, *apiVerSym, urlSym ? urlSym() : "");
+			else
+				Log_Gen(flag, Sstor_Get("PLUG_DEPR_API"), name, *apiVerSym, PLUGIN_API_NUM);
+
+			if(!ignoredep) DLib_Unload(lib);
 			return false;
 		}
 
@@ -76,19 +87,28 @@ cs_bool Plugin_LoadDll(cs_str name) {
 		if(DLib_GetSym(lib, "Plugin_Version", (void *)&plugVerSym))
 			plugin->version = *plugVerSym;
 		plugin->lib = lib;
-		plugin->id = -1;
+		plugin->url = urlSym;
+		plugin->id = (cs_uint32)-1;
 
-		for(cs_int8 i = 0; i < MAX_PLUGINS; i++) {
-			if(!Plugins_List[i] && plugin->id == -1) {
+		for(cs_uint32 i = 0; i < MAX_PLUGINS; i++) {
+			if(!Plugins_List[i] && plugin->id == (cs_uint32)-1) {
 				plugin->id = i;
 				break;
 			}
 		}
 
-		if(plugin->id != -1) {
+		if(plugin->id != (cs_uint32)-1) {
 			if(!plugin->ifaces || CheckHoldIfaces(plugin)) {
 				Plugins_List[plugin->id] = plugin;
-				if(initSym()) return true;
+				PluginInfo pi = {
+					.id = plugin->id,
+					.version = plugin->version,
+					.name = String_AllocCopy(plugin->name),
+					.home = plugin->url ? String_AllocCopy(plugin->url()) : NULL
+				};
+				Event_Call(EVT_ONPLUGINLOAD, &pi);
+				Plugin_DiscardInfo(&pi);
+				if(initSymEx ? initSymEx(plugin->id) : initSym()) return true;
 				Log_Error(Sstor_Get("PLUG_ERROR"), path);
 			} else
 				Log_Error(Sstor_Get("PLUG_ITFS"), name);
@@ -103,12 +123,71 @@ cs_bool Plugin_LoadDll(cs_str name) {
 }
 
 Plugin *Plugin_Get(cs_str name) {
-	for(cs_int32 i = 0; i < MAX_PLUGINS; i++) {
+	for(cs_uint32 i = 0; i < MAX_PLUGINS; i++) {
 		Plugin *ptr = Plugins_List[i];
 		if(ptr && String_Compare(ptr->name, name)) return ptr;
 	}
 
 	return NULL;
+}
+
+cs_bool Plugin_Enable(cs_str name, cs_bool load) {
+	cs_char from[128], to[128];
+	String_CopyToArray(from, "plugins/disabled" PATH_DELIM);
+	String_CopyToArray(to, "plugins" PATH_DELIM);
+	String_AppendToArray(from, name);
+	String_AppendToArray(to, name);
+	if (File_Rename(from, to)) {
+		if (!load) return true;
+		return Plugin_LoadDll(name, Config_GetBoolByKey(Server_Config, CFG_IGNOREDEP_KEY));
+	}
+
+	return false;
+}
+
+cs_bool Plugin_PerformUnload(cs_str name, cs_bool disable) {
+	cs_char from[128], to[128];
+	String_CopyToArray(from, "plugins" PATH_DELIM);
+	Plugin *ptr = Plugin_Get(name);
+	if(!ptr && !disable) return false;
+	String_AppendToArray(from, name);
+	if(disable) {
+		String_CopyToArray(to, "plugins" PATH_DELIM "disabled" PATH_DELIM);
+		String_AppendToArray(to, name);
+	}
+	if(!String_CaselessCompare(String_LastChar(name, '.'), "." DLIB_EXT)) {
+		if(disable) String_AppendToArray(to, "." DLIB_EXT);
+		String_AppendToArray(from, "." DLIB_EXT);
+	}
+	if(ptr && !Plugin_UnloadDll(ptr, false))
+		return false;
+
+	return !disable || File_Rename(from, to);
+}
+
+cs_uint32 Plugin_RequestInfo(PluginInfo *pi, cs_uint32 id) {
+	Plugin *ptr = NULL;
+	while (!ptr && id < MAX_PLUGINS)
+		ptr = Plugins_List[id++];
+	if (id >= MAX_PLUGINS) return 0;
+	pi->name = String_AllocCopy(ptr->name);
+	pi->home = ptr->url ? String_AllocCopy(ptr->url()) : NULL;
+	pi->version = ptr->version;
+	pi->id = ptr->id;
+
+	for (; id < MAX_PLUGINS; id++)
+		if(Plugins_List[id]) return id;
+
+	return id;
+}
+
+void Plugin_DiscardInfo(PluginInfo *pi) {
+	Memory_Free((void *)pi->name);
+	if(pi->home)
+		Memory_Free((void *)pi->home);
+	pi->name = NULL;
+	pi->home = NULL;
+	pi->version = 0;
 }
 
 cs_bool Plugin_RequestInterface(pluginReceiveIface irecv, cs_str iname) {
@@ -118,7 +197,7 @@ cs_bool Plugin_RequestInterface(pluginReceiveIface irecv, cs_str iname) {
 	Plugin *requester = NULL,
 	*answerer = NULL;
 
-	for(cs_int32 i = 0; i < MAX_PLUGINS && !(requester && answerer); i++) {
+	for(cs_uint32 i = 0; i < MAX_PLUGINS && !(requester && answerer); i++) {
 		Plugin *cplugin = Plugins_List[i];
 		if(!cplugin) continue;
 
@@ -217,7 +296,7 @@ INL static cs_bool TryDiscard(Plugin *plugin, AListField **head, cs_str iname) {
 }
 
 cs_bool Plugin_DiscardInterface(pluginReceiveIface irecv, cs_str iname) {
-	for(cs_int32 i = 0; i < MAX_PLUGINS; i++) {
+	for(cs_uint32 i = 0; i < MAX_PLUGINS; i++) {
 		Plugin *cplugin = Plugins_List[i];
 		if(cplugin && cplugin->irecv == irecv) {
 			if(TryDiscard(cplugin, &cplugin->ireqHead, iname)) return true;
@@ -231,9 +310,15 @@ cs_bool Plugin_DiscardInterface(pluginReceiveIface irecv, cs_str iname) {
 
 cs_bool Plugin_UnloadDll(Plugin *plugin, cs_bool force) {
 	Plugin_Lock(plugin);
+
 	if(plugin->unload && !(*(pluginUnloadFunc)plugin->unload)(force) && !force) {
 		Plugin_Unlock(plugin);
 		return false;
+	}
+
+	if (plugin->id != (cs_uint32)-1) {
+		cs_uint32 id = plugin->id;
+		Event_Call(EVT_ONPLUGINUNLOAD, &id);
 	}
 
 	if(plugin->name) {
@@ -243,7 +328,7 @@ cs_bool Plugin_UnloadDll(Plugin *plugin, cs_bool force) {
 
 	if(plugin->ifaces) {
 		for(PluginInterface *iface = plugin->ifaces; iface->iname; iface++) {
-			for(cs_int32 i = 0; i < MAX_PLUGINS; i++) {
+			for(cs_uint32 i = 0; i < MAX_PLUGINS; i++) {
 				Plugin *tplugin = Plugins_List[i];
 				if(tplugin == plugin || !tplugin) continue;
 				Plugin_Lock(tplugin);
@@ -269,9 +354,9 @@ cs_bool Plugin_UnloadDll(Plugin *plugin, cs_bool force) {
 	while(plugin->ireqHead)
 		AList_Remove(&plugin->ireqHead, plugin->ireqHead);
 
-	if(plugin->id != -1) {
+	if(plugin->id != (cs_uint32)-1) {
 		Plugins_List[plugin->id] = NULL;
-		plugin->id = -1;
+		plugin->id = (cs_uint32)-1;
 	}
 	Plugin_Unlock(plugin);
 
@@ -286,17 +371,19 @@ void Plugin_LoadAll(void) {
 	Directory_Ensure("plugins" PATH_DELIM "disabled");
 
 	DirIter pIter = {0};
+	cs_bool ignoredep = Config_GetBoolByKey(Server_Config, CFG_IGNOREDEP_KEY);
+
 	if(Iter_Init(&pIter, "plugins", DLIB_EXT)) {
 		do {
 			if(!pIter.isDir && pIter.cfile)
-				Plugin_LoadDll(pIter.cfile);
+				Plugin_LoadDll(pIter.cfile, ignoredep);
 		} while(Iter_Next(&pIter));
 	}
 	Iter_Close(&pIter);
 }
 
 void Plugin_UnloadAll(cs_bool force) {
-	for(cs_int32 i = 0; i < MAX_PLUGINS; i++) {
+	for(cs_uint32 i = 0; i < MAX_PLUGINS; i++) {
 		Plugin *plugin = Plugins_List[i];
 		if(plugin) Plugin_UnloadDll(plugin, force);
 	}

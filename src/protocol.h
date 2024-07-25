@@ -12,6 +12,7 @@ typedef cs_bool(*packetHandler)(Client *, cs_char *);
 #ifndef CORE_BUILD_PLUGIN
 	Packet *Packet_Get(EPacketID id);
 	void Packet_UnregisterAll(void);
+	void Packet_RegisterDefault(void);
 
 	/*
 	* Врайтеры и хендлеры
@@ -73,6 +74,8 @@ typedef cs_bool(*packetHandler)(Client *, cs_char *);
 	NOINL void CPE_WriteDefineModelPart(Client *client, cs_int32 ver, cs_byte id, CPEModelPart *part);
 	NOINL void CPE_WriteUndefineModel(Client *client, cs_byte id);
 	NOINL void CPE_WritePluginMessage(Client *client, cs_byte channel, cs_str message);
+	NOINL void CPE_WriteExtEntityTeleport(Client *client, cs_byte behavior, Vec *pos, Ang *ang);
+	NOINL void CPE_WriteLightingMode(Client *client, cs_byte mode, cs_bool locked);
 #endif
 
 API cs_bool Packet_Register(EPacketID id, cs_uint16 size, packetHandler handler);
@@ -94,8 +97,7 @@ API void Proto_WriteColor3(cs_char **dataptr, const Color3* color);
 API void Proto_WriteColor4(cs_char **dataptr, const Color4* color);
 API void Proto_WriteByteColor3(cs_char **dataptr, const Color3* color);
 API void Proto_WriteByteColor4(cs_char **dataptr, const Color4* color);
-API void Proto_WriteFloat(cs_char **dataptr, cs_float num);
+API void Proto_WriteNFloat(cs_char **dataptr, cs_uint32 n, cs_float *arr);
 
 API void CPE_RegisterServerExtension(cs_str name, cs_int32 version);
-void Packet_RegisterDefault(void);
 #endif // PROTOCOL_H

@@ -7,7 +7,10 @@
 #include "platform.h"
 
 #if defined(CORE_USE_WINDOWS)
+#pragma warning(push)
+#pragma warning(disable : 4255)
 #include <dbghelp.h>
+#pragma warning(pop)
 
 NOINL static void PrintCallStack(void) {
 	void *stack[16];
@@ -23,10 +26,12 @@ NOINL static void PrintCallStack(void) {
 	};
 
 	for(cs_int32 i = 0; i < frames; i++) {
-		SymFromAddr(GetCurrentProcess(), (cs_uintptr)stack[i], NULL, symbol);
-		printf("Frame #%d: %s = %p\n", i, symbol->Name, (void *)symbol->Address);
-		if(SymGetLineFromAddr(GetCurrentProcess(), (cs_uintptr)symbol->Address, (void *)&stack[i], &line))
-			printf("\tin %s at line %ld\n", line.FileName, line.LineNumber);
+		if(SymFromAddr(GetCurrentProcess(), (cs_uintptr)stack[i], NULL, symbol)) {
+			printf("Frame #%d: %s = %p\n", i, symbol->Name, (void *)symbol->Address);
+			if(SymGetLineFromAddr(GetCurrentProcess(), (cs_uintptr)symbol->Address, (void *)&stack[i], &line))
+				printf("\tin %s:%ld\n", line.FileName, line.LineNumber);
+			if(String_Compare(symbol->Name, "main")) break;
+		}
 	}
 }
 
@@ -50,8 +55,10 @@ static void PrintCallStack(void) {
 
 		for(cs_int32 i = 0; i < frames; i++) {
 			Dl_info dli;
-			if(dladdr(stack[i], &dli))
+			if(dladdr(stack[i], &dli)) {
 				printf("Frame #%d: %s = %p\n", i, dli.dli_sname, dli.dli_saddr);
+				if(String_Compare(dli.dli_sname, "main")) break;
+			}
 		}
 #	else
 		printf("*** Callstack printing is not implemented yet for this OS\n");

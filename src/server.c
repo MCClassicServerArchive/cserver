@@ -26,8 +26,8 @@ cs_uint64 Server_StartTime = 0;
 Socket Server_Socket = 0;
 
 INL static ClientID TryToGetIDFor(Client *client) {
-	cs_int16 maxPlayers = (cs_byte)Config_GetInt16ByKey(Server_Config, CFG_MAXPLAYERS_KEY);
-	cs_int8 maxConnPerIP = Config_GetInt8ByKey(Server_Config, CFG_CONN_KEY),
+	cs_int16 maxPlayers = (cs_byte)Config_GetIntByKey(Server_Config, CFG_MAXPLAYERS_KEY);
+	cs_int8 maxConnPerIP = (cs_int8)Config_GetIntByKey(Server_Config, CFG_CONN_KEY),
 	sameAddrCount = 1, playersCount = 0;
 	ClientID possibleId = CLIENT_SELF;
 
@@ -112,13 +112,13 @@ static cs_bool ProcessClients(void) {
 		cs_uint64 currtime = Time_GetMSec(), timeout = 0;
 		switch(client->state) {
 			case CLIENT_STATE_INITIAL:
-				timeout = 800;
+				timeout = 3000;
 				break;
 			case CLIENT_STATE_MOTD:
 				if(client->mapData.world)
 					timeout = (cs_uint64)-1;
 				else
-					timeout = 800;
+					timeout = 3000;
 				break;
 			case CLIENT_STATE_INGAME:
 				timeout = 30000;
@@ -198,13 +198,13 @@ cs_bool Server_Init(void) {
 	Server_Config = cfg;
 
 	ent = Config_NewEntry(cfg, CFG_SERVERIP_KEY, CONFIG_TYPE_STR);
-	Config_SetComment(ent, "Bind server to specified IP address. \"0.0.0.0\" - means \"all available network adapters\"");
+	Config_SetComment(ent, "Bind server to specified IP address, \"0.0.0.0\" - means \"all available network adapters\"");
 	Config_SetDefaultStr(ent, "0.0.0.0");
 
-	ent = Config_NewEntry(cfg, CFG_SERVERPORT_KEY, CONFIG_TYPE_INT32);
+	ent = Config_NewEntry(cfg, CFG_SERVERPORT_KEY, CONFIG_TYPE_INT);
 	Config_SetComment(ent, "Use specified port to accept clients. [1-65535]");
 	Config_SetLimit(ent, 1, 65535);
-	Config_SetDefaultInt32(ent, 25565);
+	Config_SetDefaultInt(ent, 25565);
 
 	ent = Config_NewEntry(cfg, CFG_SERVERNAME_KEY, CONFIG_TYPE_STR);
 	Config_SetComment(ent, "Server name and MOTD will be shown to the player during map loading");
@@ -221,22 +221,26 @@ cs_bool Server_Init(void) {
 	Config_SetComment(ent, "Check nicknames for prohibited characters");
 	Config_SetDefaultBool(ent, true);
 
+	ent = Config_NewEntry(cfg, CFG_IGNOREDEP_KEY, CONFIG_TYPE_BOOL);
+	Config_SetComment(ent, "Ignore PluginAPI version incompatibilities between plugins and server (a very dangerous option that can break your server, but fix some old plugins)");
+	Config_SetDefaultBool(ent, false);
+
 	ent = Config_NewEntry(cfg, CFG_LOCALOP_KEY, CONFIG_TYPE_BOOL);
 	Config_SetComment(ent, "Any player with ip address \"127.0.0.1\" will automatically become an operator");
 	Config_SetDefaultBool(ent, false);
 
-	ent = Config_NewEntry(cfg, CFG_MAXPLAYERS_KEY, CONFIG_TYPE_INT16);
-	Config_SetComment(ent, "Max players on server. [1-254]");
+	ent = Config_NewEntry(cfg, CFG_MAXPLAYERS_KEY, CONFIG_TYPE_INT);
+	Config_SetComment(ent, "Max players on server [1-254]");
 	Config_SetLimit(ent, 1, 254);
-	Config_SetDefaultInt16(ent, 10);
+	Config_SetDefaultInt(ent, 10);
 
-	ent = Config_NewEntry(cfg, CFG_CONN_KEY, CONFIG_TYPE_INT8);
-	Config_SetComment(ent, "Max connections per one IP. [1-5]");
+	ent = Config_NewEntry(cfg, CFG_CONN_KEY, CONFIG_TYPE_INT);
+	Config_SetComment(ent, "Max connections per one IP [1-5]");
 	Config_SetLimit(ent, 1, 5);
-	Config_SetDefaultInt8(ent, 5);
+	Config_SetDefaultInt(ent, 5);
 
 	ent = Config_NewEntry(cfg, CFG_WORLDS_KEY, CONFIG_TYPE_STR);
-	Config_SetComment(ent, "List of worlds to load at startup. (Can be \"*\" it means load all worlds in the folder)");
+	Config_SetComment(ent, "List of worlds to load at startup (Can be \"*\" it means load all worlds in the folder)");
 	Config_SetDefaultStr(ent, "world:256x256x256:normal,flat_world:64x64x64:flat");
 
 	if(!Config_Load(cfg)) {
@@ -248,8 +252,10 @@ cs_bool Server_Init(void) {
 				Log_Error(Sstor_Get("SV_CFG_ERR2"), "open", MAINCFG, Config_ErrorToString(code), extra);
 				return false;
 			}
+
+			Config_Save(Server_Config, true);
 		} else {
-			cs_str scode = Config_ErrorToString(code), 
+			cs_str scode = Config_ErrorToString(code),
 			sextra = Config_ExtraToString(extra);
 			if(line > 0)
 				Log_Error(Sstor_Get("SV_CFGL_ERR"), line, MAINCFG, scode, sextra);
@@ -260,7 +266,7 @@ cs_bool Server_Init(void) {
 		}
 	}
 	Log_SetLevelStr(Config_GetStrByKey(cfg, CFG_LOGLEVEL_KEY));
-	Config_Save(Server_Config, true);
+	Config_Save(Server_Config, false);
 	Command_RegisterDefault();
 	Packet_RegisterDefault();
 	Plugin_LoadAll();
@@ -392,7 +398,7 @@ cs_bool Server_Init(void) {
 		Log_Info(Sstor_Get("SV_WLDONE"), wIndex);
 
 	cs_str ip = Config_GetStrByKey(cfg, CFG_SERVERIP_KEY);
-	cs_uint16 port = Config_GetInt16ByKey(cfg, CFG_SERVERPORT_KEY);
+	cs_uint16 port = (cs_uint16)Config_GetIntByKey(cfg, CFG_SERVERPORT_KEY);
 	if(Bind(ip, port)) {
 		Log_Info(Sstor_Get("SV_START"), ip, port);
 		Event_Call(EVT_POSTSTART, NULL);
@@ -409,9 +415,9 @@ cs_bool Server_Init(void) {
 cs_uint64 prev, this = 0;
 
 INL static void DoStep(cs_int32 delta) {
-	(void)DoNetTick();
-	(void)Event_Call(EVT_ONTICK, &delta);
+	DoNetTick();
 	Timer_Update(delta);
+	Event_Call(EVT_ONTICK, &delta);
 }
 
 void Server_StartLoop(void) {
@@ -519,7 +525,7 @@ void Server_Cleanup(void) {
 	UnloadAllWorlds();
 	Socket_Close(Server_Socket);
 	Log_Info(Sstor_Get("SV_STOP_SC"));
-	Config_Save(Server_Config, true);
+	Config_Save(Server_Config, false);
 	Config_DestroyStore(Server_Config);
 	Log_Info(Sstor_Get("SV_STOP_UP"));
 	Plugin_UnloadAll(true);

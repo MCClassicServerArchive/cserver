@@ -4,23 +4,43 @@
 #include "vector.h"
 #include "types/list.h"
 
-#define PCU_NONE    0x00   // Ни одно из CPE-значений игрока не изменилось
-#define PCU_NAME    BIT(0) // Была обновлено имя игрока, либо группа
-#define PCU_MODEL   BIT(1) // Была изменена модель игрока
-#define PCU_ENTITY  BIT(2) // Был изменён скин игрока
-#define PCU_ENTPROP BIT(3) // Модель игрока была повёрнута
+#define CPE_EMODVAL_NONE    0x00   // Ни одно из CPE-значений игрока не изменилось
+#define CPE_EMODVAL_NAME    BIT(0) // Была обновлено имя игрока, либо группа
+#define CPE_EMODVAL_MODEL   BIT(1) // Была изменена модель игрока
+#define CPE_EMODVAL_ENTITY  BIT(2) // Был изменён скин игрока
+#define CPE_EMODVAL_ENTPROP BIT(3) // Модель игрока была повёрнута
 
-#define PVC_ADDALL  0x00
-#define PVC_SETX    BIT(0)
-#define PVC_SETY    BIT(1)
-#define PVC_SETZ    BIT(2)
-#define PVC_SETALL  (PVC_SETX | PVC_SETY | PVC_SETZ)
+#define CPE_VELCTL_ADDALL  0x00
+#define CPE_VELCTL_SETX    BIT(0)
+#define CPE_VELCTL_SETY    BIT(1)
+#define CPE_VELCTL_SETZ    BIT(2)
+#define CPE_VELCTL_SETALL  (CPE_VELCTL_SETX | CPE_VELCTL_SETY | CPE_VELCTL_SETZ)
 
-#define MV_NONE    0x00
-#define MV_COLORS  BIT(0)
-#define MV_PROPS   BIT(1)
-#define MV_TEXPACK BIT(2)
-#define MV_WEATHER BIT(3)
+#define CPE_WMODVAL_NONE    0x00
+#define CPE_WMODVAL_COLORS  BIT(0)
+#define CPE_WMODVAL_PROPS   BIT(1)
+#define CPE_WMODVAL_TEXPACK BIT(2)
+#define CPE_WMODVAL_WEATHER BIT(3)
+
+#define CPE_WMODCOL_NONE    0x00
+#define CPE_WMODCOL_SKY     BIT(0)
+#define CPE_WMODCOL_CLOUD   BIT(1)
+#define CPE_WMODCOL_FOG     BIT(2)
+#define CPE_WMODCOL_AMBIENT BIT(3)
+#define CPE_WMODCOL_DIFFUSE BIT(4)
+#define CPE_WMODCOL_SKYBOX  BIT(5)
+
+#define CPE_WMODPROP_NONE           0x00
+#define CPE_WMODPROP_SIDESID        BIT(0)
+#define CPE_WMODPROP_EDGEID         BIT(1)
+#define CPE_WMODPROP_EDGEHEIGHT     BIT(2)
+#define CPE_WMODPROP_CLOUDSHEIGHT   BIT(3)
+#define CPE_WMODPROP_FOGDISTANCE    BIT(4)
+#define CPE_WMODPROP_CLOUDSSPEED    BIT(5)
+#define CPE_WMODPROP_WEATHERSPEED   BIT(6)
+#define CPE_WMODPROP_WEATHERFADE    BIT(7)
+#define CPE_WMODPROP_EXPONENTIALFOG BIT(8)
+#define CPE_WMODPROP_MAPEDGEHEIGHT  BIT(9)
 
 #define CPE_MAX_MODELS 64
 #define CPE_MAX_PARTICLES 254
@@ -70,6 +90,12 @@ typedef enum _EEntProp {
 	ENTITY_PROP_ROT_Z,
 	ENTITY_PROP_COUNT
 } EEntProp;
+
+typedef enum _ELightMode {
+	LIGHT_REVERT,
+	LIGHT_CLASSIC,
+	LIGHT_FANCY
+} ELightMode;
 
 typedef struct _Color4 {
 	cs_int16 r, g, b, a;
@@ -200,7 +226,7 @@ typedef struct _CPEModel {
 	cs_uint16 vScale;
 	cs_byte partsCount;
 	CPEModelPart *part;
-} CPEModel; 
+} CPEModel;
 
 typedef struct _CPECuboid {
 	cs_byte id;

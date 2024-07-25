@@ -13,6 +13,29 @@
 #ifndef CORE_H
 #define CORE_H
 
+// Определеяем, что у нас за процессор
+#if defined(__BYTE_ORDER) && __BYTE_ORDER == __BIG_ENDIAN || \
+defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ || \
+defined(__BIG_ENDIAN__) || \
+defined(__ARMEB__) || \
+defined(__THUMBEB__) || \
+defined(__AARCH64EB__) || \
+defined(_M_PPC) || \
+defined(_MIBSEB) || defined(__MIBSEB) || defined(__MIBSEB__)
+#	define CORE_USE_BIG
+#elif defined(__BYTE_ORDER) && __BYTE_ORDER == __LITTLE_ENDIAN || \
+defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__ || \
+defined(__LITTLE_ENDIAN__) || \
+defined(__ARMEL__) || \
+defined(__THUMBEL__) || \
+defined(__AARCH64EL__) || \
+defined(_M_IX86) || defined(_M_X64) || defined(_M_IA64) || defined( _M_ARM) || \
+defined(_MIPSEL) || defined(__MIPSEL) || defined(__MIPSEL__)
+#	define CORE_USE_LITTLE
+#else
+#	error "Unknown CPU architecture"
+#endif
+
 // Определяем, где мы компилимся
 #ifndef CORE_MANUAL_BACKENDS
 #	if defined(__MINGW32__)
@@ -79,6 +102,7 @@
 
 #if defined(CORE_USE_WINDOWS_DEFINES)
 #	define NOINL __declspec(noinline)
+#	define DEPR  __declspec(deprecated)
 #	ifndef CORE_BUILD_PLUGIN
 #		define API __declspec(dllexport, noinline)
 #		define VAR __declspec(dllexport)
@@ -90,6 +114,7 @@
 #	endif
 #elif defined(CORE_USE_UNIX_DEFINES)
 #	define NOINL __attribute__((noinline))
+#	define DEPR  __attribute__((deprecated))
 #	ifndef CORE_BUILD_PLUGIN
 #		ifdef _WIN32
 #			define API __attribute__((dllexport, noinline))
@@ -178,7 +203,7 @@ typedef cs_byte ClientID;
 #define NULL ((void *)0)
 #define INL inline
 
-#define PLUGIN_API_NUM 1
+#define PLUGIN_API_NUM 2
 #define MAX_PLUGINS 64
 #define	MAX_CMD_OUT 1024
 #define MAX_CLIENTS 254
@@ -192,9 +217,8 @@ typedef cs_byte ClientID;
 #ifndef CORE_BUILD_PLUGIN
 #	define SOFTWARE_NAME "CServer"
 #	define SOFTWARE_FULLNAME SOFTWARE_NAME "/" GIT_COMMIT_TAG
-#	define TICKS_PER_SECOND (1000 / 64)
+#	define TICKS_PER_SECOND (1000 / 128)
 #	define MAINCFG "server.cfg"
-#	define WORLD_MAGIC 0x54414457
 #endif
 
 #define ISHEX(ch) ((ch > '/' && ch < ':') || (ch > '@' && ch < 'G') || (ch > '`' && ch < 'g'))

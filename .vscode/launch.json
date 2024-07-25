@@ -9,7 +9,7 @@
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/out/x64dbg",
             "console": "integratedTerminal",
-            "preLaunchTask": "Build debug"
+            // "preLaunchTask": "Build debug"
         },
         {
             "name": "Launch testmode",
@@ -26,9 +26,9 @@
             "name": "Launch debug (Linux)",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/out/x86_64-linux-gnu/server",
+            "program": "${workspaceFolder}/out/x86_64-linux-gnu-dbg/server",
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/out/x86_64-linux-gnu",
+            "cwd": "${workspaceFolder}/out/x86_64-linux-gnu-dbg",
             "externalConsole": false,
             "MIMode": "gdb",
             "setupCommands": [
@@ -38,7 +38,7 @@
                     "ignoreFailures": true
                 }
             ],
-            "preLaunchTask": "Build debug"
+            // "preLaunchTask": "Build debug"
         },
     ]
 }

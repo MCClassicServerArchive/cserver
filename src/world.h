@@ -6,6 +6,12 @@
 #include "types/world.h"
 #include "types/cpe.h"
 
+#ifdef CORE_USE_LITTLE
+#	define WORLD_MAGIC 0x54414457u
+#else
+#	define WORLD_MAGIC 0x57444154u
+#endif
+
 API cs_bool World_HasError(World *world);
 API EWorldError World_PopError(World *world, EWorldExtra *extra);
 
@@ -19,7 +25,7 @@ API cs_bool World_Remove(World *world);
 API cs_bool World_IsReadyToPlay(World *world);
 API cs_bool World_IsInMemory(World *world);
 API cs_bool World_IsModified(World *world);
-API void World_FinishEnvUpdate(World *world);
+API cs_bool World_FinishEnvUpdate(World *world);
 API cs_byte World_CountPlayers(World *world);
 
 API cs_bool World_Load(World *world);

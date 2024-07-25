@@ -30,10 +30,11 @@
 	 * @brief Загружает указанный плагин.
 	 * 
 	 * @param name название плагина
+	 * @param ignoredep игнорировать несовместимость версий PluginAPI
 	 * @return true - плагин загружен успешно, false - произошли
 	 * технические шоколадки.
 	 */
-	cs_bool Plugin_LoadDll(cs_str name);
+	cs_bool Plugin_LoadDll(cs_str name, cs_bool ignoredep);
 
 	/**
 	 * @brief Выгружает указанный плагин из памяти.
@@ -75,6 +76,8 @@
 	 */
 	EXP cs_bool Plugin_Load(void);
 
+	EXP cs_bool Plugin_LoadEx(cs_uint32 id);
+
 	/**
 	 * @brief Выполняется сервером в момент выгрузки плагина.
 	 * Например, при вызове серверной команды /plugin unload <name>
@@ -108,10 +111,10 @@
 
 	// Небольшой макрос для облегчения жизни при объявлении интерфейсов плагина
 #	define Plugin_DeclareInterfaces EXP PluginInterface Plugin_Interfaces[]; \
-	PluginInterface Plugin_Interfaces[] = 
+	PluginInterface Plugin_Interfaces[] =
 	// Макросы для создания массива интерфейсов
 #	define PLUGIN_IFACE_END {NULL, NULL, 0}
-#	define PLUGIN_IFACE_ADD(n, i) {n, (void *)&(i), sizeof(i)},
+#	define PLUGIN_IFACE_ADD(n, i) {n, (void *)&(i), sizeof(i)}
 
 	/**
 	 * @brief Макрос, который должен выполнить каждый плагин. Он устанавливает версию API,
@@ -124,8 +127,16 @@
 	 * ещё не сформирован окончательно.
 	 */
 #	define Plugin_SetVersion(ver) cs_int32 Plugin_ApiVer = PLUGIN_API_NUM, Plugin_Version = ver
+
+#	define Plugin_SetURL(url) EXP cs_str Plugin_URL(void) { return url; }
+
 	EXP cs_int32 Plugin_ApiVer, Plugin_Version;
 #endif
+
+API cs_bool Plugin_Enable(cs_str name, cs_bool load);
+API cs_bool Plugin_PerformUnload(cs_str name, cs_bool disable);
+API cs_uint32 Plugin_RequestInfo(PluginInfo *pi, cs_uint32 id);
+API void Plugin_DiscardInfo(PluginInfo *pi);
 
 /**
  * @brief Запрашивает у сервера указанный интерфейс.

@@ -32,10 +32,12 @@ Command_Register(#N, H, (cmdFunc)svcmd_##N, F)
 Command_UnregisterByFunc((cmdFunc)svcmd_##N)
 
 #define Command_DeclareBunch(N) static CommandRegBunch N[] =
-#define COMMAND_BUNCH_ADD(N, F, H) {#N, H, (cmdFunc)svcmd_##N, F},
+#define Command_DeclarePubBunch(N) CommandRegBunch N[] =
+#define COMMAND_BUNCH_ADD(N, F, H) {#N, H, (cmdFunc)svcmd_##N, F}
 #define COMMAND_BUNCH_END {NULL, NULL, NULL, 0x00}
 
 #ifndef CORE_BUILD_PLUGIN
+	extern AListField *Command_Head; /** Список зарегистрированных команд */
 	void Command_RegisterDefault(void);
 	void Command_UnregisterAll(void);
 #endif
@@ -107,7 +109,6 @@ API cs_bool Command_SetAlias(Command *cmd, cs_str alias);
  * 
  * @param cmd указатель на структуру команды
  * @param ud указатель на данные
- * @return API 
  */
 API void Command_SetUserData(Command *cmd, void *ud);
 
@@ -118,6 +119,4 @@ API void Command_SetUserData(Command *cmd, void *ud);
  * @return указатель на данные
  */
 API void *Command_GetUserData(Command *cmd);
-
-extern AListField *Command_Head; /** Список зарегистрированных команд */
 #endif // COMMAND_H

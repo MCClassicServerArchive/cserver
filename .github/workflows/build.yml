@@ -1,14 +1,14 @@
-name: C/C++ CI
+name: build
 
 on:
   pull_request:
     types: [opened, reopened]
-  schedule:
-    - cron: '0 0 1 * *'
   push:
     paths:
       - src/**
       - .github/**
+      - build.bat
+      - build
 
 jobs:
   build:
@@ -33,7 +33,7 @@ jobs:
             sudo apt update
             sudo apt install -y zlib1g-dev
           build: ./build
-          testbin: ./core/out/x86_64-linux-gnu/server
+          testbin: ./core/out/x86_64*/server
 
         - name: Ubuntu (x86)
           os: ubuntu
@@ -44,7 +44,7 @@ jobs:
             sudo apt update
             sudo apt install -y gcc-i686-linux-gnu zlib1g-dev:i386
           build: ./build
-          testbin: ./core/out/i686-linux-gnu/server
+          testbin: ./core/out/i686*/server
 
         - name: Ubuntu (arm64)
           os: ubuntu
@@ -70,14 +70,13 @@ jobs:
           os: windows
           arch: x86_64
           build: .\build.bat
-          testbin: .\core\out\x64dbg\server.exe
+          testbin: .\core\out\x64\server.exe
 
         - name: Windows (x86)
           os: windows
           arch: x86
           build: .\build.bat
-          testbin: .\core\out\x86dbg\server.exe
-
+          testbin: .\core\out\x86\server.exe
 
     steps:
     - name: Checkout Core repo
@@ -110,6 +109,12 @@ jobs:
         repository: igor725/cs-worldedit
         path: cs-worldedit
 
+    - name: Checkout Web plugin
+      uses: actions/checkout@v3
+      with:
+        repository: igor725/cs-web
+        path: cs-web
+
     - name: Detect MSVC (Windows)
       uses: ilammy/msvc-dev-cmd@v1
       if: ${{matrix.config.os == 'windows'}}
@@ -123,12 +128,12 @@ jobs:
     - name: Set environment (Linux)
       if: ${{matrix.config.os == 'ubuntu'}}
       run: |
-        echo "CC=${{matrix.config.arch}}-linux-${{matrix.config.abi}}-gcc" >> $GITHUB_ENV
+        echo "CSERVER_BUILD_TARGET=${{matrix.config.arch}}-linux-${{matrix.config.abi}}" >> $GITHUB_ENV
 
     - name: Build core
       working-directory: core
       run: |
-        ${{matrix.config.build}} wall dbg noprompt
+        ${{matrix.config.build}} wall noprompt
 
     - name: Build plugins
       working-directory: core
@@ -136,10 +141,11 @@ jobs:
         HOSTCC: ${{matrix.config.hostcc}}
         MACOSX_DEPLOYMENT_TARGET: "11.0"
       run: |
-        ${{matrix.config.build}} wall dbg pb base install &&
-        ${{matrix.config.build}} wall dbg pb survival install &&
-        ${{matrix.config.build}} wall dbg pb worldedit install &&
-        ${{matrix.config.build}} wall dbg pb lua install
+        ${{matrix.config.build}} wall pb base install &&
+        ${{matrix.config.build}} wall pb survival install &&
+        ${{matrix.config.build}} wall pb worldedit install &&
+        ${{matrix.config.build}} wall pb lua install &&
+        ${{matrix.config.build}} wall pb web install wbuild
 
     - name: Make some tests
       if: ${{matrix.config.testbin != null}}

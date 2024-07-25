@@ -5,6 +5,7 @@
 #include <stdlib.h>
 
 cs_bool String_CaselessCompare(cs_str str1, cs_str str2) {
+	if(!str1 || !str2) return false;
 	cs_byte c1, c2;
 
 	while(true) {
@@ -17,6 +18,7 @@ cs_bool String_CaselessCompare(cs_str str1, cs_str str2) {
 }
 
 cs_bool String_CaselessCompare2(cs_str str1, cs_str str2, cs_size len) {
+	if(!str1 || !str2) return false;
 	cs_byte c1, c2;
 
 	while(len--) {
@@ -44,8 +46,8 @@ cs_int32 String_ToInt(cs_str str) {
 	return atoi(str);
 }
 
-cs_int32 String_HexToInt(cs_str str) {
-	return strtol(str, NULL, 16);
+cs_long String_StrToLong(cs_str str, cs_char **strend, cs_int32 radix) {
+	return strtol(str, strend, radix);
 }
 
 cs_float String_ToFloat(cs_str str) {

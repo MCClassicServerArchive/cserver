@@ -1,6 +1,24 @@
 #!/bin/bash
-if [ "$CC" = "" ]; then
+if [ "$CC" == "" ]; then
 	CC="gcc"
+fi
+
+if ! command -v $CC 2>&1 > /dev/null; then
+	echo "Unable to find the specified compiler ($CC)"
+	exit 1
+fi
+
+if [ "$LNK" = "" ]; then
+	LNK="$CC"
+else
+	if ! command -v $LNK 2>&1 > /dev/null; then
+		echo "Unable to find the specified linker ($LNK)"
+		exit 1
+	fi
+fi
+
+if [ "$STRIP" == "" ]; then
+	STRIP="strip"
 fi
 
 NPROC="nproc"
@@ -37,13 +55,16 @@ DEBUG=0
 OPT="-O2"
 WARN=""
 ROOT=$(cd "$(dirname "$0")"; pwd)
-MACH=$($CC -dumpmachine)
-if [ $MACH = "" ]; then
-	MACH="unknown"
-fi
-CC="$CC -fdiagnostics-color=always"
-if [ "$LNK" = "" ]; then
-	LNK="$CC"
+if [ "$CSERVER_BUILD_TARGET" == "" ]; then
+	MACH=$($CC -dumpmachine)
+	if [ $MACH = "" ]; then
+		MACH="unknown"
+	fi
+else
+	MACH="$CSERVER_BUILD_TARGET"
+	CC="$CSERVER_BUILD_TARGET-$CC"
+	LNK="$CSERVER_BUILD_TARGET-$LNK"
+	STRIP="$CSERVER_BUILD_TARGET-$STRIP"
 fi
 if [ "$TARGET_OS" != "win" ]; then
 	LNK="$LNK -rdynamic"
@@ -66,7 +87,6 @@ PLUGIN_ARGS=""
 PLUGIN_BUILD=0
 PLUGIN_INSTALL=0
 SERVER_OUTROOT="$ROOT/out/$MACH"
-PLUGINS_DIR="$SERVER_OUTROOT/plugins"
 
 notaplugin () {
 	echo "Looks like the specified directory is not a plugin."
@@ -112,6 +132,13 @@ do
 	if [ "$a" == "run" ]; then RUN=1; fi
 	if [ "$a" == "upd" ] && [ $GITOK -eq 1 ]; then GITUPD=1; fi
 done
+
+OUTDIR="$ROOT/out/$MACH"
+if [ $DEBUG -eq 1 ]; then
+	OUTDIR="$OUTDIR-dbg"
+	SERVER_OUTROOT="$SERVER_OUTROOT-dbg"
+fi
+PLUGINS_DIR="$SERVER_OUTROOT/plugins"
 
 if [ $GITUPD -eq 1 ]; then
 	if [ $PLUGIN_BUILD -eq 1 ]; then
@@ -164,9 +191,14 @@ if [ $GITUPD -eq 1 ]; then
 	fi
 fi
 
-OUTDIR="$ROOT/out/$MACH"
-
 if [ $COMPILE -eq 1 ]; then
+	if [ -f "$ROOT/vars.sh" ]; then
+		if ! . "$ROOT/vars.sh"; then
+			echo "Failed to add plugin variables"
+			exit 1
+		fi
+	fi
+
 	if [ $DEBUG -eq 1 ]; then
 		CFLAGS="$CFLAGS -g -DCORE_BUILD_DEBUG"
 		CFLAGS="$CFLAGS -fno-omit-frame-pointer"
@@ -182,7 +214,7 @@ if [ $COMPILE -eq 1 ]; then
 	fi
 
 	STDERR="$ROOT/out/stderr"
-	OBJDIR="$OUTDIR/objs"
+	OBJDIR="$ROOT/out/.objs/$MACH"
 
 	if [ $SAN -eq 1 ]; then
 		LIBS="-lasan -lubsan $LIBS"
@@ -192,10 +224,6 @@ if [ $COMPILE -eq 1 ]; then
 	if [ ! -d "$OUTDIR" ]; then mkdir -p $OUTDIR; fi
 	if [ ! -d "$OBJDIR" ]; then mkdir -p $OBJDIR; fi
 
-	if [ -f "$ROOT/vars.sh" ]; then
-		. "$ROOT/vars.sh"
-	fi
-
 	echo -n "Compiling..."
 	pids=()
 	OBJS=""
@@ -204,7 +232,7 @@ if [ $COMPILE -eq 1 ]; then
 	for cpath in $(find "$ROOT/src/" -maxdepth 1 -type f -name "*.c"); do
 		objpath="$OBJDIR/$(basename $cpath .c).o"
 		OBJS="$OBJS $objpath"
-		$CC -c $CFLAGS $WARN $OPT -I$ROOT/src $cpath -o$objpath 2>> $STDERR &
+		$CC -fdiagnostics-color=always -c $CFLAGS $WARN $OPT -I$ROOT/src $cpath -o$objpath 2>> $STDERR &
 		pids+=($!)
 		while test $(jobs -p | wc -w) -ge "$MAXWORKERS"; do
 			wait ${pids[0]}
@@ -235,10 +263,10 @@ if [ $COMPILE -eq 1 ]; then
 
 	if [ $DEBUG -eq 0 ]; then
 		echo -ne "done\nStripping..."
-		"$MACH-strip" $OUTDIR/$OUTBIN
+		$STRIP $OUTDIR/$OUTBIN
 	fi
 
-	echo -ne "done\n"
+	echo -e "done\nCompiled binary: $OUTDIR/$OUTBIN"
 fi
 
 if [ $PLUGIN_INSTALL -eq 1 ]; then

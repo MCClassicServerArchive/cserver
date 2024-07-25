@@ -26,6 +26,15 @@ void Memory_Fill(void *dst, cs_size count, cs_byte val) {
 	while(count--) *u8dst++ = val;
 }
 
+cs_bool Memory_Compare(const cs_byte *src1, const cs_byte *src2, cs_size len) {
+	if(!src1 || !src2) return false;
+
+	while(len--)
+		if(*src1++ != *src2++) return false;
+
+	return true;
+}
+
 cs_file File_Open(cs_str path, cs_str mode) {
 	return fopen(path, mode);
 }
@@ -34,10 +43,10 @@ cs_size File_Read(void *ptr, cs_size size, cs_size count, cs_file fp) {
 	return fread(ptr, size, count, fp);
 }
 
-cs_int32 File_ReadLine(cs_file fp, cs_char *line, cs_int32 len) {
+cs_int32 File_ReadLine(cs_file fp, cs_char *line, cs_size len) {
 	cs_char *sym;
 
-	for(sym = line; (sym - line) < len; sym++) {
+	for(sym = line; (cs_size)(sym - line) < len; sym++) {
 		cs_int32 ch = File_GetChar(fp);
 		if(ch == EOF || ch == '\n') {
 			*sym = '\0';
@@ -62,6 +71,10 @@ cs_int32 File_Error(cs_file fp) {
 	return ferror(fp);
 }
 
+cs_bool File_IsEnd(cs_file fp) {
+	return feof(fp) > 0;
+}
+
 cs_int32 File_WriteFormat(cs_file fp, cs_str fmt, ...) {
 	va_list args;
 	va_start(args, fmt);
@@ -75,12 +88,34 @@ cs_bool File_Flush(cs_file fp) {
 	return fflush(fp) == 0;
 }
 
-cs_int32 File_Seek(cs_file fp, long offset, cs_int32 origin) {
-	return fseek(fp, offset, origin);
+cs_long File_Seek(cs_file fp, cs_long offset, cs_int32 origin) {
+	if(fseek(fp, offset, origin) != 0) return -1;
+	return ftell(fp);
 }
 
 cs_bool File_Close(cs_file fp) {
 	return fclose(fp) != 0;
+}
+
+static const struct _subnet {
+	cs_ulong net;
+	cs_ulong mask;
+} localnets[] = {
+	{0x0000007f, 0x000000FF},
+	{0x0000000A, 0x000000FF},
+	{0x000010AC, 0x00000FFF},
+	{0x0000A8C0, 0x0000FFFF},
+
+	{0x00000000, 0x00000000}
+};
+
+cs_bool Socket_IsLocal(cs_ulong addr) {
+	for(const struct _subnet *s = localnets; s->mask; s++) {
+		if((addr & s->mask) == s->net)
+			return true;
+	}
+
+	return false;
 }
 
 cs_bool Socket_SetAddrGuess(struct sockaddr_in *ssa, cs_str host, cs_uint16 port) {
@@ -129,13 +164,11 @@ cs_bool Socket_Bind(Socket sock, struct sockaddr_in *addr) {
 }
 
 cs_bool Socket_Connect(Socket sock, struct sockaddr_in *addr) {
-	socklen_t len = sizeof(struct sockaddr_in);
-	return connect(sock, (struct sockaddr *)addr, len) == 0;
+	return connect(sock, (struct sockaddr *)addr, sizeof(struct sockaddr_in)) == 0;
 }
 
 Socket Socket_Accept(Socket sock, struct sockaddr_in *addr) {
-	socklen_t len = sizeof(struct sockaddr_in);
-	return accept(sock, (struct sockaddr *)addr, &len);
+	return accept(sock, (struct sockaddr *)addr, &(socklen_t){sizeof(struct sockaddr_in)});
 }
 
 cs_int32 Socket_Receive(Socket sock, cs_char *buf, cs_int32 len, cs_int32 flags) {

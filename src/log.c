@@ -10,7 +10,7 @@ cs_byte Log_Flags = LOG_ALL;
 static Mutex *logMutex = NULL;
 
 #define MKCOL(c) "\033["c"m"
-#define MKTCOL(c, t) Log_Flags&LOG_COLORS?MKCOL(c)t"\033[0m":t
+#define MKTCOL(c, t) Log_Flags & LOG_COLORS ? (MKCOL(c) t MKCOL("0")) : t
 
 static cs_str MapColor(cs_char col) {
 	if(col >= 'A' && col <= 'Z') col += 32;
@@ -198,6 +198,7 @@ void Log_Print(cs_byte flag, cs_str str, va_list *args) {
 				MapColor('f')
 			);
 		buffer.data[buffer.offset] = '\0';
+		buffer.flag = flag;
 
 		if(Event_Call(EVT_ONLOG, &buffer)) {
 			ConsoleIO_PrePrint();
@@ -213,6 +214,13 @@ void Log_Print(cs_byte flag, cs_str str, va_list *args) {
 		logend:
 		Mutex_Unlock(logMutex);
 	}
+}
+
+void Log_Gen(cs_byte flag, cs_str str, ...) {
+	va_list args;
+	va_start(args, str);
+	Log_Print(flag, str, &args);
+	va_end(args);
 }
 
 void Log_Error(cs_str str, ...) {

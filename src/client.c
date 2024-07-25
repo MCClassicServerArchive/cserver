@@ -51,7 +51,8 @@ Client *Client_NewBot(void) {
 		return NULL;
 
 	Client *client = Memory_Alloc(1, sizeof(Client));
-	Client_Init(client, INVALID_SOCKET, 0);
+	Client_Init(client, INVALID_SOCKET, 0xFFFFFFFF);
+	client->playerData.world = World_Main;
 	client->state = CLIENT_STATE_INGAME;
 	client->id = botid;
 
@@ -192,7 +193,7 @@ cs_float Client_GetClickDistanceInBlocks(Client *client) {
 }
 
 cs_int32 Client_GetExtVer(Client *client, cs_ulong exthash) {
-	if(Client_IsBot(client)) return false;
+	if(Client_IsBot(client)) return 0;
 
 	for(cs_int16 i = 0; i < client->cpeData.extensions.count; i++)
 		if(client->cpeData.extensions.list[i].hash == exthash)
@@ -217,7 +218,8 @@ cs_bool Client_ChangeWorld(Client *client, World *world) {
 	if(Client_IsBot(client)) {
 		Client_Despawn(client);
 		client->playerData.world = world;
-		Client_Spawn(client);
+		client->playerData.position = world->info.spawnVec;
+		client->playerData.angle = world->info.spawnAng;
 		return true;
 	}
 
@@ -235,7 +237,7 @@ void Client_UpdateWorldInfo(Client *client, World *world, cs_bool updateAll) {
 	if(Client_IsBot(client)) return;
 
 	if(Client_GetExtVer(client, EXT_MAPASPECT)) {
-		if(updateAll || world->info.modval & MV_COLORS) {
+		if(updateAll || world->info.modval & CPE_WMODVAL_COLORS) {
 			for(cs_byte color = 0; color < WORLD_COLORS_COUNT; color++) {
 				if(updateAll || world->info.modclr & (1 << color)) {
 					Color3 ecol;
@@ -244,9 +246,9 @@ void Client_UpdateWorldInfo(Client *client, World *world, cs_bool updateAll) {
 				}
 			}
 		}
-		if(updateAll || world->info.modval & MV_TEXPACK)
+		if(updateAll || world->info.modval & CPE_WMODVAL_TEXPACK)
 			CPE_WriteTexturePack(client, world->info.texturepack);
-		if(updateAll || world->info.modval & MV_PROPS) {
+		if(updateAll || world->info.modval & CPE_WMODVAL_PROPS) {
 			for(cs_byte prop = 0; prop < WORLD_PROPS_COUNT; prop++) {
 				if(updateAll || world->info.modprop & (1 << prop))
 					CPE_WriteMapProperty(client, prop, World_GetEnvProp(world, prop));
@@ -266,7 +268,7 @@ void Client_UpdateWorldInfo(Client *client, World *world, cs_bool updateAll) {
 		if(ver > 0) CPE_WriteSetMapAppearance(client, ver, &apps);
 	}
 
-	if(updateAll || world->info.modval & MV_WEATHER)
+	if(updateAll || world->info.modval & CPE_WMODVAL_WEATHER)
 		Client_SetWeather(client, world->info.weatherType);
 }
 
@@ -285,7 +287,7 @@ CPECuboid *Client_NewSelection(Client *client) {
 }
 
 cs_bool Client_UpdateSelection(Client *client, CPECuboid *cub) {
-	if(Client_GetExtVer(client, EXT_CUBOID)) {
+	if(cub->used && Client_GetExtVer(client, EXT_CUBOID)) {
 		if(&client->cpeData.cuboids[cub->id] != cub)
 			return false;
 		CPE_WriteMakeSelection(client, cub);
@@ -410,27 +412,9 @@ cs_bool Client_IsClosed(Client *client) {
 	return !NetBuffer_IsAlive(&client->netbuf);
 }
 
-static const struct _subnet {
-	cs_ulong net;
-	cs_ulong mask;
-} localnets[] = {
-	{0x0000007f, 0x000000FF},
-	{0x0000000A, 0x000000FF},
-	{0x000010AC, 0x00000FFF},
-	{0x0000A8C0, 0x0000FFFF},
-
-	{0x00000000, 0x00000000}
-};
-
 cs_bool Client_IsLocal(Client *client) {
 	if(Client_IsBot(client)) return true;
-
-	for(const struct _subnet *s = localnets; s->mask; s++) {
-		if((client->addr & s->mask) == s->net)
-			return true;
-	}
-
-	return false;
+	return Socket_IsLocal(client->addr);
 }
 
 cs_bool Client_IsInSameWorld(Client *client, Client *other) {
@@ -487,7 +471,7 @@ cs_bool Client_SetTexturePack(Client *client, cs_str url) {
 
 cs_bool Client_SetDisplayName(Client *client, cs_str name) {
 	if(String_Copy(client->playerData.displayname, MAX_STR_LEN, name))
-		client->cpeData.updates |= PCU_NAME;
+		client->cpeData.updates |= CPE_EMODVAL_NAME;
 	return false;
 }
 
@@ -558,13 +542,13 @@ cs_bool Client_SetBlockPerm(Client *client, BlockID block, cs_bool allowPlace, c
 cs_bool Client_SetModel(Client *client, cs_int16 model) {
 	if(!CPE_CheckModel(client, model)) return false;
 	client->cpeData.model = model;
-	client->cpeData.updates |= PCU_MODEL;
+	client->cpeData.updates |= CPE_EMODVAL_MODEL;
 	return true;
 }
 
 cs_bool Client_SetSkin(Client *client, cs_str skin) {
 	String_Copy(client->cpeData.skin, MAX_STR_LEN, skin);
-	client->cpeData.updates |= PCU_ENTITY;
+	client->cpeData.updates |= CPE_EMODVAL_ENTITY;
 	return true;
 }
 
@@ -638,10 +622,26 @@ cs_bool Client_UndefineModel(Client *client, cs_byte id) {
 	return false;
 }
 
+cs_bool Client_ExtTeleportTo(Client *client, cs_byte behavior, Vec *pos, Ang *ang) {
+	if(Client_GetExtVer(client, EXT_ENTTELEPORT)) {
+		CPE_WriteExtEntityTeleport(client, behavior, pos, ang);
+		return true;
+	}
+	return false;
+}
+
+cs_bool Client_SetLighting(Client *client, ELightMode mode, cs_bool locked) {
+	if(Client_GetExtVer(client, EXT_LIGHTMODE)) {
+		CPE_WriteLightingMode(client, mode, locked);
+		return true;
+	}
+	return false;
+}
+
 cs_bool Client_SetProp(Client *client, EEntProp prop, cs_int32 value) {
 	if(prop >= ENTITY_PROP_COUNT) return false;
 	client->cpeData.props[prop] = value;
-	client->cpeData.updates |= PCU_ENTPROP;
+	client->cpeData.updates |= CPE_EMODVAL_ENTPROP;
 	return true;
 }
 
@@ -652,7 +652,7 @@ cs_bool Client_SetModelStr(Client *client, cs_str model) {
 cs_bool Client_SetGroup(Client *client, cs_uintptr gid) {
 	if(!Groups_GetByID(gid)) return false;
 	client->cpeData.group = gid;
-	client->cpeData.updates |= PCU_NAME;
+	client->cpeData.updates |= CPE_EMODVAL_NAME;
 	return true;
 }
 
@@ -728,7 +728,7 @@ INL static void PushClientName(Client *client, Client *other) {
 }
 
 cs_bool Client_Update(Client *client) {
-	if(client->cpeData.updates == PCU_NONE) return false;
+	if(client->cpeData.updates == CPE_EMODVAL_NONE) return false;
 
 	for(ClientID id = 0; id < MAX_CLIENTS; id++) {
 		Client *other = Clients_List[id];
@@ -736,25 +736,25 @@ cs_bool Client_Update(Client *client) {
 			cs_bool hasplsupport = Client_GetExtVer(other, EXT_PLAYERLIST) == 2,
 			hassmsupport = Client_GetExtVer(other, EXT_CHANGEMODEL) == 1,
 			hasentprop = Client_GetExtVer(other, EXT_ENTPROP) == 1;
-			if(client->cpeData.updates & PCU_NAME && hasplsupport) {
-				client->cpeData.updates |= PCU_ENTITY;
+			if(client->cpeData.updates & CPE_EMODVAL_NAME && hasplsupport) {
+				client->cpeData.updates |= CPE_EMODVAL_ENTITY;
 				PushClientName(other, client);
 			}
 			if(Client_IsInSameWorld(client, other)) {
-				if(client->cpeData.updates & PCU_ENTITY && hasplsupport) {
-					client->cpeData.updates |= PCU_MODEL;
+				if(client->cpeData.updates & CPE_EMODVAL_ENTITY && hasplsupport) {
+					client->cpeData.updates |= CPE_EMODVAL_MODEL;
 					SendCPEEntity(other, client);
 				}
-				if(client->cpeData.updates & PCU_MODEL && hassmsupport)
+				if(client->cpeData.updates & CPE_EMODVAL_MODEL && hassmsupport)
 					CPE_WriteSetModel(other, client);
-				if(client->cpeData.updates & PCU_ENTPROP && hasentprop)
+				if(client->cpeData.updates & CPE_EMODVAL_ENTPROP && hasentprop)
 					for(EEntProp i = 0; i < ENTITY_PROP_COUNT; i++)
 						CPE_WriteSetEntityProperty(other, client, i, client->cpeData.props[i]);
 			}
 		}
 	}
 
-	client->cpeData.updates = PCU_NONE;
+	client->cpeData.updates = CPE_EMODVAL_NONE;
 	return true;
 }
 
@@ -1036,7 +1036,7 @@ cs_bool Client_Spawn(Client *client) {
 	Event_Call(EVT_ONSPAWN, &evt);
 	// Vanilla_WriteUserType(client, client->playerData.isOP ? 0x64 : 0x00);
 	if(evt.updateenv) Client_UpdateWorldInfo(client, client->playerData.world, true);
-	client->cpeData.updates = PCU_NONE;
+	client->cpeData.updates = CPE_EMODVAL_NONE;
 
 	for(ClientID i = 0; i < MAX_CLIENTS; i++) {
 		Client *other = Clients_List[i];
